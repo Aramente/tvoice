@@ -17,6 +17,7 @@
   "scripts": {
     "start": "node bin/tvoice.js",
     "dev": "node bin/tvoice.js --no-tunnel",
+    "postinstall": "node scripts/fix-node-pty-perms.js",
     "generate-vapid": "node scripts/generate-vapid.js",
     "test": "node --test tests/*.test.js"
   },

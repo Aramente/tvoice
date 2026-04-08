@@ -49,7 +49,32 @@ export class VoiceInput {
     };
     this.rec.onerror = (e) => {
       this.active = false;
-      this.onState('error', e.error);
+      // Map SpeechRecognitionErrorEvent codes to helpful explanations
+      const err = e.error || 'unknown';
+      const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent);
+      let hint = '';
+      switch (err) {
+        case 'service-not-allowed':
+          hint = isIOS
+            ? 'iOS Safari blocks Web Speech in PWAs. Use the iPhone keyboard mic button instead.'
+            : 'Speech service refused. Check browser permission settings.';
+          break;
+        case 'not-allowed':
+          hint = 'Microphone permission denied. Grant access in your browser settings.';
+          break;
+        case 'no-speech':
+          hint = 'No speech detected.';
+          break;
+        case 'audio-capture':
+          hint = 'No microphone found.';
+          break;
+        case 'network':
+          hint = 'Network error — Web Speech uses a cloud service on some browsers.';
+          break;
+        default:
+          hint = `Voice error: ${err}`;
+      }
+      this.onState('error', hint);
     };
     this.rec.onend = () => {
       this.active = false;

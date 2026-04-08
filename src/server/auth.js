@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import { randomBytes, timingSafeEqual } from 'node:crypto';
 
 const usedLoginTokens = new Set();       // burn-after-use
-const loginTokenTTL = 10 * 60;           // 10 minutes
+const loginTokenTTL = 15 * 60;           // 15 minutes
 const jwtAccessTTL = 60 * 60 * 24 * 7;   // 7 days
 
 // Rate limit state (in-memory, single process).

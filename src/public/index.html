@@ -49,47 +49,47 @@
     <!-- Terminal canvas -->
     <main class="terminal-host" id="terminal-host"></main>
 
-    <!-- Special key toolbar (floats above virtual keyboard) -->
+    <!-- Special key toolbar (floats above virtual keyboard).
+         Structure mirrors the Tvoice design brief exactly:
+         - primary row (always visible): esc tab ctrl alt ↑↓←→
+         - expanded row (swipe up on primary row): / - | $ ~ _ * + copy/paste
+         - ai row (auto-revealed when Claude Code is detected): yes no ^C ^Z collapse
+    -->
     <nav class="key-toolbar" id="key-toolbar" aria-label="Special keys">
+      <div class="swipe-grip" aria-hidden="true"></div>
+
       <!-- AI row (hidden by default, revealed when Claude Code detected) -->
       <div class="key-row ai-row" id="ai-row" aria-hidden="true">
-        <button data-ai="yes"    class="key ai-key key-yes">yes</button>
-        <button data-ai="no"     class="key ai-key key-no">no</button>
-        <button data-key="C-c"   class="key">^C</button>
-        <button data-key="C-z"   class="key">^Z</button>
+        <button data-ai="yes"      class="key ai-key key-yes">yes</button>
+        <button data-ai="no"       class="key ai-key key-no">no</button>
+        <button data-key="C-c"     class="key">^C</button>
+        <button data-key="C-z"     class="key">^Z</button>
         <button data-ai="collapse" class="key">collapse</button>
-        <button data-ai="scroll-ai" class="key">jump ai</button>
       </div>
 
-      <!-- Expanded row (swipe up to reveal) -->
+      <!-- Expanded row (swipe up on primary row to reveal) -->
       <div class="key-row expanded-row" id="expanded-row" aria-hidden="true">
-        <button data-key="/"    class="key">/</button>
-        <button data-key="-"    class="key">-</button>
-        <button data-key="|"    class="key">|</button>
-        <button data-key="$"    class="key">$</button>
-        <button data-key="~"    class="key">~</button>
-        <button data-key="_"    class="key">_</button>
-        <button data-key="*"    class="key">*</button>
-        <button data-key="&quot;" class="key">"</button>
-        <button data-key="'"    class="key">'</button>
-        <button data-key=":"    class="key">:</button>
-        <button data-key=";"    class="key">;</button>
-        <button data-key="="    class="key">=</button>
+        <button data-tool="copy"  class="key key-clip">copy</button>
+        <button data-tool="paste" class="key key-clip">paste</button>
+        <button data-key="/"      class="key">/</button>
+        <button data-key="-"      class="key">-</button>
+        <button data-key="|"      class="key">|</button>
+        <button data-key="$"      class="key">$</button>
+        <button data-key="~"      class="key">~</button>
+        <button data-key="_"      class="key">_</button>
+        <button data-key="*"      class="key">*</button>
       </div>
 
-      <!-- Primary row (always visible) -->
+      <!-- Primary row — always visible. Exactly 8 buttons from the brief. -->
       <div class="key-row primary-row">
-        <button data-key="Escape" class="key key-mod">esc</button>
-        <button data-key="Tab"    class="key key-mod">tab</button>
-        <button data-sticky="Ctrl" class="key key-sticky" id="sticky-ctrl">ctrl</button>
-        <button data-sticky="Alt"  class="key key-sticky" id="sticky-alt">alt</button>
+        <button data-key="Escape"     class="key key-mod">esc</button>
+        <button data-key="Tab"        class="key key-mod">tab</button>
+        <button data-sticky="Ctrl"    class="key key-sticky" id="sticky-ctrl">ctrl</button>
+        <button data-sticky="Alt"     class="key key-sticky" id="sticky-alt">alt</button>
         <button data-key="ArrowUp"    class="key key-arrow">↑</button>
         <button data-key="ArrowDown"  class="key key-arrow">↓</button>
         <button data-key="ArrowLeft"  class="key key-arrow">←</button>
         <button data-key="ArrowRight" class="key key-arrow">→</button>
-        <button data-tool="voice" class="key key-voice" id="voice-btn" aria-label="Voice input">mic</button>
-        <button data-tool="snippets" class="key" aria-label="Snippets">snip</button>
-        <button data-tool="expand" class="key key-expand" id="expand-btn" aria-label="More keys">▲</button>
       </div>
     </nav>
 
@@ -124,6 +124,11 @@
             </select>
           </label>
           <textarea id="custom-theme-json" class="hidden" placeholder='{"background":"#000","foreground":"#fff", ...}'></textarea>
+        </section>
+        <section class="drawer-section">
+          <h3>Input</h3>
+          <button id="voice-btn" class="btn">Voice input (experimental)</button>
+          <p class="muted small">Web Speech API — works on desktop Chrome/Edge, flaky on iOS Safari. Use your keyboard's mic button for iOS dictation instead.</p>
         </section>
         <section class="drawer-section">
           <h3>Notifications</h3>
@@ -163,6 +168,30 @@
         <div class="history-list" id="history-list"></div>
       </div>
     </aside>
+
+    <!-- Paste modal — a reliable way to get text into the terminal on iOS
+         without fighting the navigator.clipboard permission dance. -->
+    <div class="modal hidden" id="paste-modal" aria-hidden="true">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-panel">
+        <header class="modal-header">
+          <h3>Paste into terminal</h3>
+          <button class="modal-close" data-modal-close aria-label="Close">×</button>
+        </header>
+        <div class="modal-body">
+          <p class="muted small">Long-press the box below and tap <b>Paste</b>, then <b>Send</b>.</p>
+          <textarea id="paste-input" placeholder="Paste here or type…" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+          <label class="paste-nl-row">
+            <input type="checkbox" id="paste-append-nl" checked>
+            <span>Add newline at end (run as command)</span>
+          </label>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" data-modal-close>Cancel</button>
+          <button class="btn-primary" id="paste-send">Send</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Toast / notification bar -->
     <div class="toast-stack" id="toast-stack" aria-live="polite"></div>

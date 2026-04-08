@@ -7,7 +7,7 @@ import chalk from 'chalk';
 import qrcode from 'qrcode-terminal';
 import { createRequire } from 'node:module';
 import { startServer } from '../src/server/index.js';
-import { loadConfig, saveConfig } from '../src/server/config.js';
+import { loadConfig } from '../src/server/config.js';
 import { startTunnel, stopTunnel } from '../src/server/tunnel.js';
 import { mintLoginToken } from '../src/server/auth.js';
 
@@ -32,13 +32,13 @@ const opts = program.opts();
 async function main() {
   const cfg = await loadConfig();
 
-  // CLI flags override config (only when explicitly provided — undefined means "use config")
+  // CLI flags override the in-memory config for this run only. We deliberately
+  // do NOT persist them — the config file is for generated secrets and
+  // explicit user preferences, not for "whatever flag I passed last time".
   if (opts.port !== undefined) cfg.port = opts.port;
   if (opts.host !== undefined) cfg.host = opts.host;
   if (opts.tunnel === false) cfg.tunnel = 'none';
   else if (typeof opts.tunnel === 'string') cfg.tunnel = opts.tunnel;
-
-  await saveConfig(cfg);
 
   // Banner
   console.log('');
@@ -66,8 +66,8 @@ async function main() {
     }
   }
 
-  // Mint a one-time login token (10min TTL) and embed in the URL
-  const token = await mintLoginToken(cfg, { ttl: 10 * 60 });
+  // Mint a one-time login token (15min TTL) and embed in the URL
+  const token = await mintLoginToken(cfg, { ttl: 15 * 60 });
   const loginUrl = `${publicUrl}/login?t=${encodeURIComponent(token)}`;
 
   if (opts.printLogin) {
@@ -88,7 +88,7 @@ async function main() {
   console.log(chalk.white('  Or open:'));
   console.log(chalk.cyan('  ' + loginUrl));
   console.log('');
-  console.log(chalk.gray('  Login token expires in 10 minutes.'));
+  console.log(chalk.gray('  Login token expires in 15 minutes.'));
   console.log(chalk.gray('  After login, your session cookie is valid for 7 days.'));
   console.log(chalk.gray('  Ctrl+C to stop.'));
   console.log('');

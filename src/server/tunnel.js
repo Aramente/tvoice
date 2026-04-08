@@ -85,46 +85,84 @@ async function startCloudflared(cfg) {
 }
 
 async function startTailscale(cfg) {
-  await ensureBinary('tailscale', [
-    'Install: brew install --cask tailscale && open -a Tailscale',
-    'Or see: https://tailscale.com/download',
-  ]);
+  const TS_PORT = cfg.tailscalePort || 8443;
+
+  // Resolve the tailscale CLI binary. On macOS, the top-level `tailscale`
+  // command is a broken Swift wrapper on some setups — it crashes with a
+  // BundleIdentifier fatal error when called outside the app launcher.
+  // resolveTailscaleCli tries the PATH command first, falls back to calling
+  // the binary inside the .app bundle directly.
+  const tsCli = await resolveTailscaleCli();
 
   // Probe the device name via `tailscale status --json`
   let hostname = null;
   try {
-    const { stdout } = await execFileP('tailscale', ['status', '--json']);
+    const { stdout } = await execFileP(tsCli, ['status', '--json']);
     const parsed = JSON.parse(stdout);
     hostname = parsed?.Self?.DNSName?.replace(/\.$/, '');
   } catch { /* continue */ }
 
-  // Ensure a serve mapping exists. We use a fresh mapping each run on /tvoice
-  // so we don't collide with any other service already on /
-  await execFileP('tailscale', [
-    'serve',
-    '--bg',
-    '--https=443',
-    '--set-path=/tvoice',
-    `http://${cfg.host}:${cfg.port}`,
-  ]).catch((err) => {
+  // Use a dedicated HTTPS port (8443 by default) so we never collide with an
+  // existing `tailscale serve --https=443` mapping. This is important for
+  // users who already serve ttyd or another tool on the primary HTTPS port.
+  try {
+    await execFileP(tsCli, [
+      'serve',
+      '--bg',
+      `--https=${TS_PORT}`,
+      `http://${cfg.host}:${cfg.port}`,
+    ]);
+  } catch (err) {
     throw new Error(`tailscale serve failed: ${err.stderr || err.message}`);
-  });
+  }
 
-  const url = hostname ? `https://${hostname}/tvoice` : `https://localhost/tvoice`;
+  const url = hostname
+    ? `https://${hostname}:${TS_PORT}`
+    : `https://localhost:${TS_PORT}`;
   return {
     proc: null,
     url,
     cleanup: async () => {
       try {
-        await execFileP('tailscale', [
-          'serve',
-          '--https=443',
-          '--set-path=/tvoice',
-          'off',
-        ]);
+        await execFileP(tsCli, ['serve', `--https=${TS_PORT}`, 'off']);
       } catch { /* ignore */ }
     },
   };
+}
+
+async function resolveTailscaleCli() {
+  // macOS cask: the top-level `tailscale` on PATH is almost always a symlink
+  // to the Swift binary inside the .app. Calling it via the symlink crashes
+  // with "BundleIdentifiers.swift:41: Fatal error: The current bundleIdentifier
+  // is unknown to the registry" because Swift's runtime can't walk up to the
+  // enclosing bundle. Calling the SAME binary via its absolute path inside
+  // the bundle works perfectly. So on macOS we prefer the bundle path.
+  const candidates = [];
+  if (process.platform === 'darwin') {
+    candidates.push('/Applications/Tailscale.app/Contents/MacOS/Tailscale');
+    candidates.push('tailscale'); // in case of non-cask install
+  } else {
+    candidates.push('tailscale');
+  }
+
+  for (const cli of candidates) {
+    try {
+      const { stdout } = await execFileP(cli, ['version']);
+      // Defensive check: reject output that contains the Swift fatal error
+      if (/bundleIdentifier is unknown/i.test(stdout)) continue;
+      return cli;
+    } catch (err) {
+      // Also reject stderr-contained fatal errors (swift writes to stderr)
+      if (err.stderr && /bundleIdentifier is unknown/i.test(err.stderr)) continue;
+      // Otherwise keep trying
+    }
+  }
+
+  throw new Error(
+    'tailscale CLI not found or not working.\n' +
+    '  Install: brew install --cask tailscale && open -a Tailscale\n' +
+    '  Or see: https://tailscale.com/download'
+  );
 }
 
 async function ensureBinary(name, hints) {

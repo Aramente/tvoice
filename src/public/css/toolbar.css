@@ -8,12 +8,27 @@
   background: rgba(10, 10, 10, 0.92);
   backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
-  padding: 4px 4px calc(4px);
+  padding: 0 4px 4px;
   z-index: 30;
   user-select: none;
   transition: bottom 0.1s ease-out;
   padding-left: calc(var(--safe-left) + 4px);
   padding-right: calc(var(--safe-right) + 4px);
+}
+
+/* Subtle swipe-up affordance above the primary row. Always visible so the
+ * user discovers there's an expanded row without a dedicated button. */
+.swipe-grip {
+  width: 40px;
+  height: 4px;
+  margin: 3px auto;
+  background: var(--border-strong);
+  border-radius: 2px;
+  opacity: 0.7;
+}
+.key-toolbar.expanded .swipe-grip {
+  background: var(--c-cyan);
+  opacity: 0.9;
 }
 
 .key-toolbar .key-row {
@@ -30,6 +45,14 @@
 
 .key-toolbar .key-row.primary-row {
   justify-content: space-between;
+  overflow-x: visible;
+}
+.key-toolbar .key-row.primary-row .key {
+  /* Primary row: distribute available width among all buttons so they never
+   * overflow on narrow screens. Min touch target is 40px (just under the
+   * 44pt HIG — acceptable given the primary row must fit edge-to-edge). */
+  flex: 1 1 0;
+  min-width: 40px;
 }
 
 .key {
@@ -76,6 +99,12 @@
 }
 .key-expand[aria-expanded="true"] {
   transform: rotate(180deg);
+}
+
+.key-clip {
+  color: var(--c-cyan);
+  font-size: 12px;
+  font-weight: 600;
 }
 
 .key-voice {
