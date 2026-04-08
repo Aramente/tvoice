@@ -88,7 +88,9 @@ async function main() {
   console.log(chalk.white('  Or open:'));
   console.log(chalk.cyan('  ' + loginUrl));
   console.log('');
-  console.log(chalk.gray('  Login token expires in 15 minutes.'));
+  const expiryDate = new Date(Date.now() + 15 * 60 * 1000);
+  const expiryStr = expiryDate.toLocaleTimeString(undefined, { hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false });
+  console.log(chalk.gray(`  Login token expires at ${expiryStr} (in 15 minutes).`));
   console.log(chalk.gray('  After login, your session cookie is valid for 7 days.'));
   console.log(chalk.gray('  Ctrl+C to stop.'));
   console.log('');

@@ -1,6 +1,16 @@
 // Snippet storage — synced with the server /api/settings so they survive
 // device changes.
 
+// A few useful defaults — only seeded when the user has no snippets yet.
+const DEFAULT_SNIPPETS = [
+  { name: 'claude', body: 'claude' },
+  { name: 'status', body: 'git status' },
+  { name: 'log', body: 'git log --oneline -20' },
+  { name: 'diff', body: 'git diff' },
+  { name: 'ls', body: 'ls -la' },
+  { name: 'vault', body: 'cd ~/my-vault' },
+];
+
 export class Snippets {
   constructor() {
     this.items = [];  // { name, body }
@@ -12,6 +22,10 @@ export class Snippets {
       if (!res.ok) return;
       const data = await res.json();
       this.items = Array.isArray(data.snippets) ? data.snippets : [];
+      if (this.items.length === 0) {
+        this.items = DEFAULT_SNIPPETS.slice();
+        await this.save();
+      }
     } catch { /* ignore */ }
   }
 

@@ -65,8 +65,13 @@ async function main() {
     },
   });
 
-  // Create the first tab
-  app.tabManager.newTab();
+  // Pick up existing tmux sessions if any (orphans from a previous connection)
+  const existing = await fetchExistingSessions();
+  if (existing.length > 0) {
+    showSessionPicker(existing);
+  } else {
+    app.tabManager.newTab();
+  }
 
   // Toolbar
   app.toolbar = new KeyToolbar({
@@ -248,6 +253,15 @@ async function main() {
       if (v) v.textContent = `tvoice v${version}`;
     }
   } catch { /* ignore */ }
+
+  // Periodic auth check — if the cookie expires mid-session, show the
+  // login-required overlay so the user knows they need a fresh QR code.
+  setInterval(async () => {
+    try {
+      const res = await fetch('/api/me', { credentials: 'same-origin' });
+      if (res.status === 401) showLoginRequired();
+    } catch { /* network blip, ignore */ }
+  }, 60_000);
 }
 
 // ---------- Auth ----------
@@ -259,15 +273,23 @@ async function checkAuth() {
   } catch { return false; }
 }
 
+let _retryBound = false;
 function showLoginRequired() {
   const overlay = el('login-required');
-  if (overlay) overlay.classList.remove('hidden');
+  if (overlay) {
+    overlay.classList.remove('hidden');
+    overlay.setAttribute('aria-hidden', 'false');
+  }
+  if (_retryBound) return;
   const retry = el('retry-auth');
-  if (retry) retry.addEventListener('click', async () => {
-    const ok = await checkAuth();
-    if (ok) location.reload();
-    else toast('Still not authenticated. Run `npx tvoice` for a new QR code.', 'error');
-  });
+  if (retry) {
+    retry.addEventListener('click', async () => {
+      const ok = await checkAuth();
+      if (ok) location.reload();
+      else toast('Still not authenticated. Run `npx tvoice` on your Mac for a new QR code.', 'error');
+    });
+    _retryBound = true;
+  }
 }
 
 // ---------- Settings ----------
@@ -566,6 +588,99 @@ function closePasteModal() {
   modal.setAttribute('aria-hidden', 'true');
   const s = app.tabManager.activeSession();
   if (s) s.focus();
+}
+
+// ---------- Session picker (orphan tmux) ----------
+
+async function fetchExistingSessions() {
+  try {
+    const res = await fetch('/api/sessions', { credentials: 'same-origin' });
+    if (!res.ok) return [];
+    const data = await res.json();
+    return Array.isArray(data.sessions) ? data.sessions : [];
+  } catch { return []; }
+}
+
+async function closeSessionById(id) {
+  try {
+    await fetch(`/api/sessions/${encodeURIComponent(id)}/close`, {
+      method: 'POST',
+      credentials: 'same-origin',
+    });
+  } catch { /* ignore */ }
+}
+
+function showSessionPicker(sessions) {
+  const modal = el('session-picker');
+  const list = el('session-list');
+  if (!modal || !list) return;
+  list.innerHTML = '';
+
+  for (const s of sessions) {
+    const row = document.createElement('div');
+    row.className = 'session-row';
+    row.dataset.ai = s.aiMode?.detected ? 'true' : 'false';
+    row.dataset.aiAwaiting = s.aiMode?.awaiting ? 'true' : 'false';
+    const age = humanAge(Date.now() - (s.lastActivity || s.createdAt));
+    row.innerHTML = `
+      <span class="session-ai-dot"></span>
+      <div class="session-info">
+        <div class="session-title"></div>
+        <div class="session-meta"></div>
+      </div>
+      <button class="session-delete" data-action="delete">×</button>
+    `;
+    row.querySelector('.session-title').textContent = s.title || s.id;
+    row.querySelector('.session-meta').textContent =
+      `${s.cols}×${s.rows} · last active ${age} ago`;
+    row.addEventListener('click', (e) => {
+      if (e.target.closest('[data-action="delete"]')) return;
+      hideSessionPicker();
+      app.tabManager.newTab({ sessionId: s.id });
+    });
+    row.querySelector('.session-delete').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      await closeSessionById(s.id);
+      row.remove();
+      if (list.children.length === 0) {
+        hideSessionPicker();
+        app.tabManager.newTab();
+      }
+    });
+    list.appendChild(row);
+  }
+
+  modal.classList.remove('hidden');
+  modal.setAttribute('aria-hidden', 'false');
+
+  el('new-session-btn').onclick = () => {
+    hideSessionPicker();
+    app.tabManager.newTab();
+  };
+  el('close-all-sessions').onclick = async () => {
+    const jobs = sessions.map((s) => closeSessionById(s.id));
+    await Promise.all(jobs);
+    hideSessionPicker();
+    app.tabManager.newTab();
+  };
+}
+
+function hideSessionPicker() {
+  const modal = el('session-picker');
+  if (!modal) return;
+  modal.classList.add('hidden');
+  modal.setAttribute('aria-hidden', 'true');
+}
+
+function humanAge(ms) {
+  if (ms < 0) ms = 0;
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  if (h < 24) return `${h}h`;
+  return `${Math.floor(h / 24)}d`;
 }
 
 function setupPasteModal() {

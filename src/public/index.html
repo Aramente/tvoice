@@ -169,6 +169,24 @@
       </div>
     </aside>
 
+    <!-- Session picker — shown on startup if orphan tmux sessions exist -->
+    <div class="modal hidden" id="session-picker" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <header class="modal-header">
+          <h3>Resume a session?</h3>
+        </header>
+        <div class="modal-body">
+          <p class="muted small">These tmux sessions are still running from a previous connection. Pick one to resume, or start a fresh terminal.</p>
+          <div class="session-list" id="session-list"></div>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" id="close-all-sessions">Close all &amp; start fresh</button>
+          <button class="btn-primary" id="new-session-btn">+ New terminal</button>
+        </div>
+      </div>
+    </div>
+
     <!-- Paste modal — a reliable way to get text into the terminal on iOS
          without fighting the navigator.clipboard permission dance. -->
     <div class="modal hidden" id="paste-modal" aria-hidden="true">

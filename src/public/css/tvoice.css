@@ -415,6 +415,65 @@ pre.code { display: block; white-space: pre-wrap; }
   border-color: var(--c-cyan);
   outline: none;
 }
+.session-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+  max-height: 50vh;
+  overflow-y: auto;
+}
+.session-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 10px 12px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  cursor: pointer;
+  transition: border-color 0.15s, background 0.15s;
+}
+.session-row:hover { border-color: var(--c-cyan); background: var(--bg-elev-2); }
+.session-row .session-info {
+  flex: 1;
+  min-width: 0;
+}
+.session-row .session-title {
+  color: var(--fg);
+  font-weight: 600;
+  font-size: 14px;
+  font-family: var(--font-family);
+}
+.session-row .session-meta {
+  color: var(--fg-dim);
+  font-size: 11px;
+  margin-top: 2px;
+}
+.session-row .session-ai-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: transparent;
+}
+.session-row[data-ai="true"] .session-ai-dot { background: var(--c-blue); }
+.session-row[data-ai-awaiting="true"] .session-ai-dot {
+  background: var(--c-yellow);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+.session-row .session-delete {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--fg-dim);
+  border-radius: 6px;
+  padding: 6px 10px;
+  min-height: 36px;
+  cursor: pointer;
+  font-size: 12px;
+}
+.session-row .session-delete:hover { color: var(--c-red); border-color: var(--c-red); }
+
 .paste-nl-row {
   display: flex;
   align-items: center;

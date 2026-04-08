@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v3-simple-toolbar';
+const VERSION = 'tvoice-v4-session-picker';
 const SHELL = [
   '/',
   '/css/tvoice.css',

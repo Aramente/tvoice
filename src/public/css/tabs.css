@@ -84,11 +84,16 @@
   flex: 0 0 auto;
   min-width: 36px;
   min-height: 32px;
-  background: transparent;
-  border: 1px solid transparent;
+  background: var(--bg);
+  border: 1px solid var(--border);
   border-radius: 6px;
-  color: var(--fg-dim);
-  font-size: 16px;
+  color: var(--fg);
+  font-size: 18px;
+  font-weight: 600;
   cursor: pointer;
+  line-height: 1;
+  padding: 0 8px;
 }
-.tab-btn:hover { color: var(--fg); border-color: var(--border); }
+.tab-btn:hover { color: var(--c-cyan); border-color: var(--c-cyan); }
+#new-tab-btn { color: var(--c-cyan); border-color: var(--border-strong); }
+#menu-btn { min-width: 40px; font-size: 20px; }
