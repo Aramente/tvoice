@@ -8,6 +8,7 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import { randomUUID } from 'node:crypto';
 import { RingBuffer } from './ring-buffer.js';
+import { audit } from './audit.js';
 
 const execFileP = promisify(execFile);
 
@@ -65,7 +66,11 @@ export class SessionManager {
     });
     await s.spawn();
     this.sessions.set(id, s);
-    s.on('exit', () => this.sessions.delete(id));
+    s.on('exit', () => {
+      audit('session.exit', { id });
+      this.sessions.delete(id);
+    });
+    audit('session.create', { id, cols, rows, tmuxBacked: !!this.tmuxAvailable });
     return s;
   }
 
@@ -73,6 +78,7 @@ export class SessionManager {
     const s = this.sessions.get(id);
     if (!s) return;
     await s.kill();
+    audit('session.close', { id });
     this.sessions.delete(id);
   }
 

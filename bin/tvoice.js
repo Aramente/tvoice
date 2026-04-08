@@ -24,12 +24,84 @@ program
   .option('-h, --host <string>', 'host to bind on (default: 127.0.0.1)')
   .option('-t, --tunnel <backend>', 'tunnel backend: cloudflare | tailscale | none (default: cloudflare)')
   .option('--no-tunnel', 'disable tunneling, serve on localhost only')
+  .option('--allow-lan', 'allow binding to a non-loopback host (DANGEROUS: any device on your LAN can attempt to log in)')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
 const opts = program.opts();
 
+// ---------- Pre-flight safety checks ----------
+
+function refuseRoot() {
+  if (typeof process.geteuid === 'function' && process.geteuid() === 0) {
+    console.error('');
+    console.error(chalk.red.bold('  Tvoice refuses to run as root.'));
+    console.error('');
+    console.error(chalk.gray('  Anyone who connects to a Tvoice server gets an interactive shell as'));
+    console.error(chalk.gray('  the user that started the server. Running tvoice as root would mean'));
+    console.error(chalk.gray('  that shell is a root shell. That is almost certainly not what you'));
+    console.error(chalk.gray('  want, even on a single-user machine.'));
+    console.error('');
+    console.error(chalk.gray('  Run as your normal user instead:'));
+    console.error(chalk.cyan('    npx tvoice'));
+    console.error('');
+    process.exit(2);
+  }
+}
+
+function isLoopbackHost(host) {
+  if (!host) return true;
+  return host === '127.0.0.1' || host === 'localhost' || host === '::1';
+}
+
+function refuseNonLoopbackBind(host, allowLan) {
+  if (isLoopbackHost(host)) return;
+  if (allowLan) return;
+  console.error('');
+  console.error(chalk.red.bold(`  Tvoice refuses to bind to ${host} without --allow-lan.`));
+  console.error('');
+  console.error(chalk.gray('  Binding to a non-loopback host means anyone on the same network as'));
+  console.error(chalk.gray('  this machine can reach the server and attempt to log in. The login'));
+  console.error(chalk.gray('  token + JWT cookie are still required, but you have moved the attack'));
+  console.error(chalk.gray('  surface from "this Mac only" to "everyone on the LAN".'));
+  console.error('');
+  console.error(chalk.gray('  Recommended alternatives:'));
+  console.error(chalk.cyan('    npx tvoice                       ') + chalk.gray('# Cloudflare Tunnel — works from anywhere'));
+  console.error(chalk.cyan('    npx tvoice --tunnel tailscale    ') + chalk.gray('# Private tailnet (recommended)'));
+  console.error(chalk.cyan('    npx tvoice --no-tunnel           ') + chalk.gray('# Localhost only'));
+  console.error('');
+  console.error(chalk.gray('  If you really mean it, re-run with --allow-lan.'));
+  console.error('');
+  process.exit(2);
+}
+
+function deploymentBanner(cfg, allowLan) {
+  // Mode-specific risk banner — not just decorative, this is the place
+  // where the user actually reads the deployment posture.
+  console.log('');
+  if (cfg.tunnel === 'tailscale') {
+    console.log(chalk.green('  ✓ Tailscale serve mode'));
+    console.log(chalk.gray('    Reachable only from devices in your tailnet (recommended).'));
+  } else if (cfg.tunnel === 'cloudflare') {
+    console.log(chalk.yellow('  ! Cloudflare Quick Tunnel mode'));
+    console.log(chalk.gray('    Public HTTPS URL — anyone with the link can hit the server.'));
+    console.log(chalk.gray('    The URL is random. The login token is required (15 min, single use).'));
+    console.log(chalk.gray("    Don't leave this running unattended. Ctrl+C to stop."));
+  } else if (cfg.tunnel === 'none' && allowLan) {
+    console.log(chalk.red('  ⚠ LAN mode — bound to ' + cfg.host));
+    console.log(chalk.gray('    Anyone on your local network can reach this server.'));
+    console.log(chalk.gray('    Login token + cookie are still enforced, but the attack surface'));
+    console.log(chalk.gray('    is everyone in WiFi range. Prefer --tunnel tailscale.'));
+  } else {
+    console.log(chalk.cyan('  · Localhost-only mode'));
+    console.log(chalk.gray("    Reachable from this Mac only. Phone access requires a tunnel —"));
+    console.log(chalk.gray('    re-run with --tunnel cloudflare or --tunnel tailscale.'));
+  }
+  console.log('');
+}
+
 async function main() {
+  refuseRoot();
   const cfg = await loadConfig();
 
   // CLI flags override the in-memory config for this run only. We deliberately
@@ -40,11 +112,14 @@ async function main() {
   if (opts.tunnel === false) cfg.tunnel = 'none';
   else if (typeof opts.tunnel === 'string') cfg.tunnel = opts.tunnel;
 
+  refuseNonLoopbackBind(cfg.host, opts.allowLan);
+
   // Banner
   console.log('');
   console.log(chalk.cyan.bold('  ▛▀▖  ') + chalk.white('Tvoice') + chalk.gray(` v${pkg.version}`));
   console.log(chalk.gray('  ▌ ▌  Mobile-first terminal for AI coding agents'));
-  console.log('');
+
+  deploymentBanner(cfg, opts.allowLan);
 
   // Start HTTP/WS server first
   const { server, close: closeServer } = await startServer(cfg);

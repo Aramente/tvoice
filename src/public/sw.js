@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v10-scroll-polish';
+const VERSION = 'tvoice-v11-audit-hardening';
 const SHELL = [
   '/',
   '/css/tvoice.css',

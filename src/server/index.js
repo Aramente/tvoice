@@ -10,6 +10,7 @@ import { buildRoutes } from './routes.js';
 import { attachWebSocket } from './ws-handler.js';
 import { SessionManager } from './session-manager.js';
 import { PushDispatcher } from './push.js';
+import { audit } from './audit.js';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -130,6 +131,14 @@ export async function startServer(cfg) {
   await new Promise((resolve, reject) => {
     httpServer.listen(cfg.port, cfg.host, () => resolve());
     httpServer.once('error', reject);
+  });
+
+  await audit('server.start', {
+    host: cfg.host,
+    port: cfg.port,
+    tunnel: cfg.tunnel,
+    tmuxPrefix: cfg.tmuxPrefix,
+    pid: process.pid,
   });
 
   // Also expose push dispatcher so CLI can emit lifecycle notifications

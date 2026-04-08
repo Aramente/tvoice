@@ -3,7 +3,7 @@
 
 import { homedir } from 'node:os';
 import { join, dirname } from 'node:path';
-import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
+import { mkdir, readFile, writeFile, chmod, stat } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import webpush from 'web-push';
 
@@ -35,8 +35,31 @@ const DEFAULTS = {
 export async function loadConfig() {
   await ensureConfigDir();
   let stored = {};
+  const file = getConfigFile();
   try {
-    const raw = await readFile(getConfigFile(), 'utf8');
+    // Refuse to load the config file if it's world-readable. This file
+    // contains the JWT signing secret — anyone who can read it can mint
+    // valid auth cookies and get an interactive shell. We auto-fix the
+    // mode to 600 if we can; otherwise we throw and the server refuses
+    // to start.
+    try {
+      const st = await stat(file);
+      // On Unix, mode & 0o077 catches "any group or other bit set"
+      const groupOrOther = st.mode & 0o077;
+      if (groupOrOther !== 0 && process.platform !== 'win32') {
+        try {
+          await chmod(file, 0o600);
+        } catch (e) {
+          throw new Error(
+            `Tvoice refuses to start: ${file} is readable by other users ` +
+            `(mode ${(st.mode & 0o777).toString(8)}). Run: chmod 600 "${file}"`
+          );
+        }
+      }
+    } catch (err) {
+      if (err.code !== 'ENOENT') throw err;
+    }
+    const raw = await readFile(file, 'utf8');
     stored = JSON.parse(raw);
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;

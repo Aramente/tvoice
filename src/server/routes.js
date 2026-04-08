@@ -16,6 +16,7 @@ import {
   rateLimitGc,
 } from './auth.js';
 import { transcribe, status as whisperStatus } from './whisper.js';
+import { audit, auditFromReq } from './audit.js';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -33,13 +34,14 @@ export function buildRoutes({ cfg, sessions, push }) {
     const ip = req.ip || req.socket.remoteAddress || 'unknown';
     const rl = checkRateLimit(ip);
     if (!rl.ok) {
+      auditFromReq('login.rate_limited', req);
       res.status(429).send('Too many attempts. Try again later.');
       return;
     }
     try {
       await consumeLoginToken(cfg, token);
     } catch (err) {
-      // Render login page so the user sees a real error
+      auditFromReq('login.failed', req, { reason: err.message });
       const loginHtml = await readFile(join(PUBLIC_DIR, 'login.html'), 'utf8')
         .catch(() => '<h1>Login</h1><p>Token required</p>');
       res.status(401).type('html').send(
@@ -49,13 +51,23 @@ export function buildRoutes({ cfg, sessions, push }) {
     }
     resetRateLimit(ip);
     const access = await issueAccessToken(cfg);
+    const cookieMaxAgeMs = (cfg.cookieTtlMin || 7 * 24 * 60) * 60 * 1000;
     res.cookie('tvoice_auth', access, {
       httpOnly: true,
       sameSite: 'strict',
       secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
-      maxAge: 7 * 24 * 60 * 60 * 1000,
+      maxAge: cookieMaxAgeMs,
       path: '/',
     });
+    auditFromReq('login.success', req, { cookieTtlMs: cookieMaxAgeMs });
+    // Notify any subscribed devices that a new login happened — quick way
+    // to notice unauthorised access without having to grep the audit log.
+    push.notifyAll({
+      title: 'Tvoice: new login',
+      body: `New session from ${ip}`,
+      tag: 'tvoice-login',
+      requireInteraction: false,
+    }).catch(() => {});
     res.redirect('/');
   });
 
@@ -79,8 +91,9 @@ export function buildRoutes({ cfg, sessions, push }) {
     res.json({ ok: true, user: req.auth.u });
   });
 
-  router.post('/api/logout', auth, (_req, res) => {
+  router.post('/api/logout', auth, (req, res) => {
     res.clearCookie('tvoice_auth', { path: '/' });
+    auditFromReq('logout', req);
     res.json({ ok: true });
   });
 
@@ -167,7 +180,14 @@ export function buildRoutes({ cfg, sessions, push }) {
         const allowed = new Set(['auto', 'en', 'fr', 'es', 'de', 'it', 'pt', 'nl', 'ja', 'zh', 'ko', 'ru']);
         const lang = allowed.has(requested) ? requested : 'auto';
         const ext = extForContentType(req.headers['content-type']);
+        const t0 = Date.now();
         const text = await transcribe(req.body, { language: lang, ext });
+        auditFromReq('transcribe', req, {
+          bytes: req.body.length,
+          lang,
+          ms: Date.now() - t0,
+          chars: text.length,
+        });
         res.json({ text });
       } catch (err) {
         const payload = { error: err.message };
