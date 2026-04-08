@@ -136,7 +136,21 @@ async function main() {
       if (state === 'unsupported') toast('Voice input not supported in this browser', 'error');
     },
   });
+  // Voice button — behaviour depends on platform.
+  // On iOS (Safari + installed PWAs both), Web Speech API returns
+  // "service-not-allowed" and there's nothing we can do about it. So on iOS
+  // the mic button instead focuses the terminal, which pops the iOS
+  // keyboard, and the user taps the keyboard's mic for native dictation.
+  // On non-iOS, we try the Web Speech API directly.
+  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
+                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
   const toggleVoice = () => {
+    if (isIOS) {
+      const s = app.tabManager.activeSession();
+      if (s) s.focus();
+      toast('Tap the mic icon on your iOS keyboard for dictation', 'info');
+      return;
+    }
     if (app.voice.active) app.voice.stop();
     else app.voice.start();
   };
