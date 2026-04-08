@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v7-ios-keyboard';
+const VERSION = 'tvoice-v8-local-whisper';
 const SHELL = [
   '/',
   '/css/tvoice.css',

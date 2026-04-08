@@ -1,7 +1,7 @@
 // Express routes. Intentionally minimal — most interactivity happens over the
 // WebSocket channel.
 
-import { Router } from 'express';
+import { Router, raw as expressRaw } from 'express';
 import { createRequire } from 'node:module';
 import { fileURLToPath } from 'node:url';
 import { dirname, join, resolve } from 'node:path';
@@ -13,6 +13,7 @@ import {
   checkRateLimit,
   resetRateLimit,
 } from './auth.js';
+import { transcribe, status as whisperStatus } from './whisper.js';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -115,6 +116,43 @@ export function buildRoutes({ cfg, sessions, push }) {
     res.json(r);
   });
 
+  // ---------- Speech-to-text via local Whisper ----------
+
+  router.get('/api/voice/status', auth, async (_req, res) => {
+    try {
+      const st = await whisperStatus();
+      res.json(st);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // Accept raw audio bytes. Content-Type signals the container format
+  // (audio/webm, audio/mp4, audio/ogg, etc.). ffmpeg handles whatever
+  // the phone sent.
+  router.post(
+    '/api/transcribe',
+    auth,
+    expressRaw({ type: 'audio/*', limit: '15mb' }),
+    async (req, res) => {
+      try {
+        if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
+          return res.status(400).json({ error: 'no audio body' });
+        }
+        const lang = typeof req.query.lang === 'string' ? req.query.lang : 'auto';
+        const ext = extForContentType(req.headers['content-type']);
+        const text = await transcribe(req.body, { language: lang, ext });
+        res.json({ text });
+      } catch (err) {
+        const payload = { error: err.message };
+        if (err.code) payload.code = err.code;
+        if (err.hint) payload.hint = err.hint;
+        if (err.missing) payload.missing = err.missing;
+        res.status(err.code === 'NOT_INSTALLED' ? 503 : 500).json(payload);
+      }
+    }
+  );
+
   // Theme + snippet storage (stored in config for single-user simplicity)
   router.get('/api/settings', auth, (_req, res) => {
     res.json({
@@ -134,4 +172,18 @@ export function buildRoutes({ cfg, sessions, push }) {
   });
 
   return router;
+}
+
+function extForContentType(ct) {
+  const t = (ct || '').toLowerCase().split(';')[0].trim();
+  switch (t) {
+    case 'audio/webm':  return '.webm';
+    case 'audio/ogg':   return '.ogg';
+    case 'audio/mp4':
+    case 'audio/x-m4a': return '.m4a';
+    case 'audio/mpeg':  return '.mp3';
+    case 'audio/wav':
+    case 'audio/x-wav': return '.wav';
+    default:            return '.webm';
+  }
 }

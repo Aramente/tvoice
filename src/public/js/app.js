@@ -6,6 +6,7 @@ import { TabManager } from './tabs.js';
 import { KeyToolbar } from './toolbar.js';
 import { setupGestures } from './gestures.js';
 import { VoiceInput } from './voice.js';
+import { VoiceRecorder } from './voice-record.js';
 import { PushClient } from './push-client.js';
 import { CommandHistory } from './history.js';
 import { Snippets } from './snippets.js';
@@ -136,33 +137,11 @@ async function main() {
       if (state === 'unsupported') toast('Voice input not supported in this browser', 'error');
     },
   });
-  // Voice button — behaviour depends on platform.
-  // On iOS (Safari + installed PWAs both), Web Speech API returns
-  // "service-not-allowed" and there's nothing we can do about it. So on iOS
-  // the mic button instead focuses the terminal, which pops the iOS
-  // keyboard, and the user taps the keyboard's mic for native dictation.
-  // On non-iOS, we try the Web Speech API directly.
-  const isIOS = /iPhone|iPad|iPod/.test(navigator.userAgent) ||
-                (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
-  const toggleVoice = () => {
-    if (isIOS) {
-      const s = app.tabManager.activeSession();
-      if (s) s.focus();
-      toast('Tap the mic icon on your iOS keyboard for dictation', 'info');
-      return;
-    }
-    if (app.voice.active) app.voice.stop();
-    else app.voice.start();
-  };
-  el('voice-btn')?.addEventListener('click', toggleVoice);
-  el('voice-header-btn')?.addEventListener('click', toggleVoice);
-  // Reflect active state on both buttons
-  const origOnState = app.voice.onState;
-  app.voice.onState = (state, err) => {
-    const header = el('voice-header-btn');
-    if (header) header.classList.toggle('recording', state === 'listening');
-    origOnState(state, err);
-  };
+  // Voice input — unified across platforms. MediaRecorder captures audio
+  // (works in iOS Safari PWAs where SpeechRecognition is blocked), we
+  // upload the blob to /api/transcribe on the Mac, and whisper.cpp runs
+  // locally to turn it into text. Auto-stops on silence.
+  setupVoiceFlow();
 
   // Push client
   app.push = new PushClient();
@@ -453,6 +432,139 @@ function handleToolbarAction(action) {
       try { s.term.scrollToBottom(); } catch { /* ignore */ }
     }
   }
+}
+
+// ---------- Voice flow (record → whisper → inject) ----------
+
+function setupVoiceFlow() {
+  const overlay = el('voice-overlay');
+  const ringEl = el('voice-ring');
+  const statusEl = el('voice-status');
+  const hintEl = el('voice-hint');
+  const cancelBtn = el('voice-cancel');
+
+  const showOverlay = () => {
+    overlay.classList.remove('hidden', 'transcribing', 'error');
+    overlay.setAttribute('aria-hidden', 'false');
+    statusEl.textContent = 'Listening…';
+    hintEl.textContent = "Speak — I'll stop when you pause";
+  };
+  const hideOverlay = () => {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+    overlay.classList.remove('transcribing', 'error');
+    if (ringEl) ringEl.style.transform = '';
+  };
+
+  const startRecording = async () => {
+    if (app._voiceRecorder?.active) {
+      app._voiceRecorder.stop();
+      return;
+    }
+    showOverlay();
+    const rec = new VoiceRecorder({
+      onStart: () => { /* overlay already visible */ },
+      onLevel: (rms) => {
+        if (!ringEl) return;
+        // Scale ring from 0.6 to ~1.4 based on rms (clamped)
+        const scale = 0.6 + Math.min(0.8, rms * 8);
+        ringEl.style.transform = `scale(${scale})`;
+        ringEl.style.opacity = String(0.4 + Math.min(0.5, rms * 6));
+      },
+      onError: (msg) => {
+        overlay.classList.add('error');
+        statusEl.textContent = 'Microphone error';
+        hintEl.textContent = msg;
+        setTimeout(hideOverlay, 2500);
+      },
+      onStop: async (blob, { cancelled }) => {
+        if (cancelled || !blob || blob.size < 1000) {
+          hideOverlay();
+          return;
+        }
+        overlay.classList.add('transcribing');
+        statusEl.textContent = 'Transcribing…';
+        hintEl.textContent = 'whisper.cpp on your Mac, not the cloud';
+        try {
+          const res = await fetch('/api/transcribe?lang=auto', {
+            method: 'POST',
+            credentials: 'same-origin',
+            headers: { 'Content-Type': blob.type || 'audio/webm' },
+            body: blob,
+          });
+          if (res.status === 503) {
+            const err = await res.json().catch(() => ({}));
+            showInstallHint(err);
+            return;
+          }
+          if (!res.ok) {
+            const err = await res.json().catch(() => ({}));
+            throw new Error(err.error || `HTTP ${res.status}`);
+          }
+          const data = await res.json();
+          const text = (data.text || '').trim();
+          if (!text) {
+            overlay.classList.add('error');
+            statusEl.textContent = 'No speech detected';
+            hintEl.textContent = 'Try again a little louder';
+            setTimeout(hideOverlay, 1800);
+            return;
+          }
+          const s = app.tabManager.activeSession();
+          if (s) s.sendInput(text);
+          toast(`Heard: ${text.length > 50 ? text.slice(0, 50) + '…' : text}`, 'success');
+          hideOverlay();
+        } catch (err) {
+          overlay.classList.add('error');
+          statusEl.textContent = 'Transcription failed';
+          hintEl.textContent = err.message;
+          setTimeout(hideOverlay, 3000);
+        }
+      },
+    });
+    app._voiceRecorder = rec;
+    await rec.start();
+  };
+
+  const cancelRecording = () => {
+    if (app._voiceRecorder?.active) {
+      app._voiceRecorder.cancel();
+    }
+    hideOverlay();
+  };
+
+  el('voice-btn')?.addEventListener('click', startRecording);
+  el('voice-header-btn')?.addEventListener('click', startRecording);
+  cancelBtn?.addEventListener('click', cancelRecording);
+  // Tap anywhere in the backdrop (not the panel) to cancel
+  overlay?.addEventListener('click', (e) => {
+    if (e.target === overlay) cancelRecording();
+  });
+
+  // Visual pulse on the header mic while recording
+  const headerBtn = el('voice-header-btn');
+  const observer = new MutationObserver(() => {
+    if (headerBtn) headerBtn.classList.toggle('recording', !overlay.classList.contains('hidden'));
+  });
+  if (overlay && headerBtn) observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+}
+
+function showInstallHint(err) {
+  const overlay = el('voice-overlay');
+  const statusEl = el('voice-status');
+  const hintEl = el('voice-hint');
+  overlay.classList.add('error');
+  overlay.classList.remove('transcribing');
+  statusEl.textContent = 'Whisper not installed';
+  const missing = (err.missing || []).join(', ');
+  hintEl.textContent = missing
+    ? `Missing: ${missing}. Run: ${err.hint?.split('\n')[0] || 'brew install whisper-cpp ffmpeg'} on your Mac.`
+    : (err.hint || err.error || 'See README for setup.');
+  // Leave it visible longer so the user can read the command
+  setTimeout(() => {
+    overlay.classList.add('hidden');
+    overlay.setAttribute('aria-hidden', 'true');
+  }, 6000);
 }
 
 // ---------- iOS-style text selection ----------

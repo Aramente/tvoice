@@ -137,6 +137,55 @@ When Claude Code is detected in the output stream, Tvoice:
 
 Detection is loose and heuristic-based right now. The plan is to tighten it against real Claude Code output as soon as it's running against a live session.
 
+## Voice input (iOS-compatible — runs whisper.cpp on your Mac)
+
+Web Speech API is blocked inside iOS Safari PWAs, so Tvoice takes a different path: the phone records audio with `MediaRecorder`, streams the blob to a `POST /api/transcribe` endpoint on your Mac, and the server hands it to a locally installed `whisper.cpp` for transcription. Text comes back and gets injected straight into the terminal. Audio never leaves your machine. No API keys. On an M-series Mac with the `base.en` model you'll get transcriptions in well under a second.
+
+### Setup
+
+Two one-time installs on the Mac:
+
+```bash
+# ffmpeg is used to transcode MediaRecorder's webm/mp4 to 16 kHz mono WAV
+brew install ffmpeg
+
+# whisper.cpp — either brew install it...
+brew install whisper-cpp
+
+# ...or build from source if the brew formula doesn't work on your setup:
+git clone --depth 1 https://github.com/ggerganov/whisper.cpp.git /tmp/whisper.cpp
+cd /tmp/whisper.cpp
+cmake -B build -DCMAKE_BUILD_TYPE=Release
+cmake --build build --config Release -j
+cp build/bin/whisper-cli ~/.local/bin/
+mkdir -p ~/.local/lib
+cp build/src/libwhisper* build/ggml/src/libggml* \
+   build/ggml/src/ggml-blas/libggml-blas* \
+   build/ggml/src/ggml-metal/libggml-metal* ~/.local/lib/
+install_name_tool -add_rpath "$HOME/.local/lib" ~/.local/bin/whisper-cli
+```
+
+Then download the `base.en` model (~142 MB) to `~/.tvoice/models/`:
+
+```bash
+mkdir -p ~/.tvoice/models
+curl -L -o ~/.tvoice/models/ggml-base.en.bin \
+  https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-base.en.bin
+```
+
+Tvoice will also auto-download the model to `~/.tvoice/models/` the first time you tap the mic button if it can reach huggingface.co.
+
+### Usage
+
+- Tap the `mic` button in the tvoice header (top-right, next to `+` and `…`)
+- A fullscreen listening overlay appears with a pulsing ring that reacts to your voice
+- Speak
+- Auto-stops after ~1.5 s of silence, or tap "Cancel" to abort
+- The server transcribes and the text lands in your terminal
+- Hit return to run it
+
+The recognizer gets nudged toward developer vocabulary via a prompt bias that includes `git`, `npm`, `tmux`, `claude`, etc. — so `git status` comes through as two words, not "get status".
+
 ## Push notifications
 
 Tap `Enable push notifications` in the menu drawer. On iOS you need to install the PWA to your home screen first (iOS 16.4+).

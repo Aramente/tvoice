@@ -187,6 +187,21 @@
       </div>
     </aside>
 
+    <!-- Voice recording overlay — fullscreen listening indicator with a
+         pulsing ring that scales with audio input level. Tap anywhere to
+         cancel. Auto-stops on silence. -->
+    <div class="voice-overlay hidden" id="voice-overlay" aria-hidden="true">
+      <div class="voice-panel">
+        <div class="voice-pulse">
+          <div class="voice-ring" id="voice-ring"></div>
+          <div class="voice-dot"></div>
+        </div>
+        <div class="voice-status" id="voice-status">Listening…</div>
+        <div class="voice-hint" id="voice-hint">Speak — I'll stop when you pause</div>
+        <button class="voice-cancel" id="voice-cancel">Cancel</button>
+      </div>
+    </div>
+
     <!-- Session picker — shown on startup if orphan tmux sessions exist -->
     <div class="modal hidden" id="session-picker" aria-hidden="true">
       <div class="modal-backdrop"></div>

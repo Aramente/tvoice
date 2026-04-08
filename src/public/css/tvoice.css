@@ -137,6 +137,92 @@ pre.code { display: block; white-space: pre-wrap; }
   touch-action: pan-y;
 }
 
+/* Voice recording overlay — fullscreen with a pulsing ring that follows
+ * the mic input level. Tap anywhere to cancel. */
+.voice-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 150;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(10, 10, 10, 0.92);
+  backdrop-filter: blur(14px);
+  padding: 24px;
+}
+.voice-overlay.hidden { display: none; }
+.voice-panel {
+  text-align: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 20px;
+}
+.voice-pulse {
+  position: relative;
+  width: 140px;
+  height: 140px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.voice-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 2px solid var(--c-magenta);
+  transform: scale(0.6);
+  transition: transform 80ms ease-out, opacity 200ms;
+  opacity: 0.5;
+}
+.voice-dot {
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  background: var(--c-magenta);
+  box-shadow: 0 0 40px rgba(192, 132, 252, 0.6);
+  position: relative;
+  z-index: 2;
+  animation: voice-dot-pulse 1.6s ease-in-out infinite;
+}
+@keyframes voice-dot-pulse {
+  0%, 100% { transform: scale(1); }
+  50%      { transform: scale(1.08); }
+}
+.voice-status {
+  font-size: 18px;
+  font-weight: 600;
+  color: var(--fg-bright);
+}
+.voice-hint {
+  font-size: 13px;
+  color: var(--fg-dim);
+  max-width: 280px;
+}
+.voice-cancel {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--fg);
+  padding: 10px 20px;
+  border-radius: 10px;
+  font-family: inherit;
+  font-size: 14px;
+  min-height: 44px;
+  cursor: pointer;
+  margin-top: 8px;
+}
+.voice-cancel:hover { border-color: var(--c-red); color: var(--c-red); }
+
+.voice-overlay.transcribing .voice-ring { border-color: var(--c-cyan); animation: voice-ring-spin 1s linear infinite; }
+.voice-overlay.transcribing .voice-dot  { background: var(--c-cyan); }
+@keyframes voice-ring-spin {
+  0%   { transform: rotate(0deg) scale(0.8); border-top-color: transparent; }
+  100% { transform: rotate(360deg) scale(0.8); border-top-color: transparent; }
+}
+
+.voice-overlay.error .voice-ring { border-color: var(--c-red); }
+.voice-overlay.error .voice-dot  { background: var(--c-red); animation: none; }
+
 /* iOS-style selection handles — two draggable circles anchored at the
  * start and end of the current terminal selection. Large hit area
  * (touch target) with a smaller visible dot inside. */
