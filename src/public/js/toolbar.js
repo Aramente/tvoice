@@ -183,16 +183,27 @@ export class KeyToolbar {
     el.addEventListener('touchend', (e) => {
       if (startY === null) return;
       const dy = startY - e.changedTouches[0].clientY;
-      if (dy > 40) {
-        this.expanded = true;
-        this.root.classList.add('expanded');
-        this.onExpand(true);
-      } else if (dy < -40) {
-        this.expanded = false;
-        this.root.classList.remove('expanded');
-        this.onExpand(false);
+      if (dy > 30) {
+        this._setExpanded(true);
+      } else if (dy < -30) {
+        this._setExpanded(false);
       }
       startY = null;
     }, { passive: true });
+
+    // Also handle a plain tap on the swipe grip as a toggle (accessibility +
+    // users who don't discover the swipe).
+    const grip = this.root.querySelector('.swipe-grip');
+    if (grip) {
+      grip.addEventListener('click', () => this._setExpanded(!this.expanded));
+    }
+  }
+
+  _setExpanded(next) {
+    this.expanded = !!next;
+    this.root.classList.toggle('expanded', this.expanded);
+    const expandedRow = this.root.querySelector('.expanded-row');
+    if (expandedRow) expandedRow.setAttribute('aria-hidden', this.expanded ? 'false' : 'true');
+    this.onExpand(this.expanded);
   }
 }

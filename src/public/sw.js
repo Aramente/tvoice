@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v4-session-picker';
+const VERSION = 'tvoice-v5-force-refresh';
 const SHELL = [
   '/',
   '/css/tvoice.css',
@@ -59,9 +59,22 @@ self.addEventListener('install', (event) => {
 self.addEventListener('activate', (event) => {
   event.waitUntil(
     (async () => {
+      // Nuke every old cache, not just the ones whose name doesn't match the
+      // current VERSION. The SW itself is the only cache governance we keep.
       const keys = await caches.keys();
       await Promise.all(keys.filter((k) => k !== VERSION).map((k) => caches.delete(k)));
       await self.clients.claim();
+      // Force every controlled client to reload so they pick up the new
+      // shell. Without this, iOS PWAs can stay stuck on the old HTML for
+      // hours even with skipWaiting() + claim().
+      try {
+        const all = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of all) {
+          if (client.url && 'navigate' in client) {
+            try { await client.navigate(client.url); } catch { /* ignore */ }
+          }
+        }
+      } catch { /* ignore */ }
     })()
   );
 });
@@ -73,6 +86,19 @@ self.addEventListener('fetch', (event) => {
   // Never intercept API or WebSocket
   if (url.pathname.startsWith('/api/')) return;
   if (url.pathname.startsWith('/ws')) return;
+
+  // HTML shell + the service worker itself + the manifest — never cache.
+  // These drive the "can I see new UI" question; caching them is what causes
+  // the stuck-on-old-shell bug on iOS PWAs.
+  if (
+    url.pathname === '/' ||
+    url.pathname === '/index.html' ||
+    url.pathname === '/sw.js' ||
+    url.pathname === '/manifest.webmanifest'
+  ) {
+    event.respondWith(fetch(event.request).catch(() => caches.match(event.request)));
+    return;
+  }
 
   // Cache-first for vendor
   if (url.pathname.startsWith('/vendor/')) {

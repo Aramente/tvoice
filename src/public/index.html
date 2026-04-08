@@ -56,7 +56,7 @@
          - ai row (auto-revealed when Claude Code is detected): yes no ^C ^Z collapse
     -->
     <nav class="key-toolbar" id="key-toolbar" aria-label="Special keys">
-      <div class="swipe-grip" aria-hidden="true"></div>
+      <button type="button" class="swipe-grip" aria-label="Toggle extra keys"></button>
 
       <!-- AI row (hidden by default, revealed when Claude Code detected) -->
       <div class="key-row ai-row" id="ai-row" aria-hidden="true">
@@ -73,11 +73,17 @@
         <button data-tool="paste" class="key key-clip">paste</button>
         <button data-key="/"      class="key">/</button>
         <button data-key="-"      class="key">-</button>
+        <button data-key="+"      class="key">+</button>
+        <button data-key="="      class="key">=</button>
         <button data-key="|"      class="key">|</button>
         <button data-key="$"      class="key">$</button>
         <button data-key="~"      class="key">~</button>
         <button data-key="_"      class="key">_</button>
         <button data-key="*"      class="key">*</button>
+        <button data-key="&amp;"  class="key">&amp;</button>
+        <button data-key="#"      class="key">#</button>
+        <button data-key="&quot;" class="key">"</button>
+        <button data-key="'"      class="key">'</button>
       </div>
 
       <!-- Primary row — always visible. Exactly 8 buttons from the brief. -->
