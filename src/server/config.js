@@ -7,8 +7,16 @@ import { mkdir, readFile, writeFile, chmod } from 'node:fs/promises';
 import { randomBytes } from 'node:crypto';
 import webpush from 'web-push';
 
-const CONFIG_DIR = join(homedir(), '.tvoice');
-const CONFIG_FILE = join(CONFIG_DIR, 'config.json');
+// Config directory can be overridden via env var. Critical for tests —
+// without this, any test that boots the server and touches /api/settings
+// or /api/push/subscribe will happily clobber the user's real config at
+// ~/.tvoice/config.json.
+function getConfigDir() {
+  return process.env.TVOICE_CONFIG_DIR || join(homedir(), '.tvoice');
+}
+function getConfigFile() {
+  return join(getConfigDir(), 'config.json');
+}
 
 const DEFAULTS = {
   port: 3000,
@@ -28,7 +36,7 @@ export async function loadConfig() {
   await ensureConfigDir();
   let stored = {};
   try {
-    const raw = await readFile(CONFIG_FILE, 'utf8');
+    const raw = await readFile(getConfigFile(), 'utf8');
     stored = JSON.parse(raw);
   } catch (err) {
     if (err.code !== 'ENOENT') throw err;
@@ -67,25 +75,21 @@ export async function loadConfig() {
 
 export async function saveConfig(cfg) {
   await ensureConfigDir();
-  // Never persist runtime-only fields
+  // Strip runtime-only fields that should never be persisted. Currently
+  // that's nothing, but the spread leaves room to add denylist entries
+  // without touching callers.
   const { ...persistable } = cfg;
-  await writeFile(CONFIG_FILE, JSON.stringify(persistable, null, 2), 'utf8');
-  try {
-    await chmod(CONFIG_FILE, 0o600);
-  } catch {
-    // best-effort on non-unix
-  }
+  const file = getConfigFile();
+  await writeFile(file, JSON.stringify(persistable, null, 2), 'utf8');
+  try { await chmod(file, 0o600); } catch { /* best-effort on non-unix */ }
 }
 
 async function ensureConfigDir() {
-  await mkdir(CONFIG_DIR, { recursive: true });
-  try {
-    await chmod(CONFIG_DIR, 0o700);
-  } catch {
-    // ignore
-  }
+  const dir = getConfigDir();
+  await mkdir(dir, { recursive: true });
+  try { await chmod(dir, 0o700); } catch { /* ignore */ }
 }
 
 export function getConfigPath() {
-  return CONFIG_FILE;
+  return getConfigFile();
 }

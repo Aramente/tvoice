@@ -3,8 +3,23 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server/index.js';
-import { mintLoginToken } from '../src/server/auth.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// Point every test at an isolated temp config dir BEFORE importing any
+// server module. Without this, tests that hit /api/settings or
+// /api/push/subscribe will silently clobber the user's real ~/.tvoice/
+// config, destroying their jwt secret, vapid keys, and push subscriptions.
+const TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tvoice-test-'));
+process.env.TVOICE_CONFIG_DIR = TEST_CONFIG_DIR;
+
+const { startServer } = await import('../src/server/index.js');
+const { mintLoginToken } = await import('../src/server/auth.js');
+
+process.on('exit', () => {
+  try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
+});
 
 const TEST_CFG = {
   port: 0,

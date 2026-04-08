@@ -3,7 +3,18 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server/index.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tvoice-test-'));
+process.env.TVOICE_CONFIG_DIR = TEST_CONFIG_DIR;
+
+const { startServer } = await import('../src/server/index.js');
+
+process.on('exit', () => {
+  try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
+});
 
 const TEST_CFG = {
   port: 0,

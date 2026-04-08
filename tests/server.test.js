@@ -4,12 +4,24 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { startServer } from '../src/server/index.js';
-import {
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+// Isolate config writes — see transcribe-route.test.js for the why
+const TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tvoice-test-'));
+process.env.TVOICE_CONFIG_DIR = TEST_CONFIG_DIR;
+
+const { startServer } = await import('../src/server/index.js');
+const {
   mintLoginToken,
   issueAccessToken,
   verifyAccessToken,
-} from '../src/server/auth.js';
+} = await import('../src/server/auth.js');
+
+process.on('exit', () => {
+  try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
+});
 
 const TEST_CFG = {
   port: 0,                                // let OS pick

@@ -4,7 +4,18 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { status, invalidateCache } from '../src/server/whisper.js';
+import { mkdtempSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+
+const TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tvoice-test-'));
+process.env.TVOICE_CONFIG_DIR = TEST_CONFIG_DIR;
+
+const { status, invalidateCache } = await import('../src/server/whisper.js');
+
+process.on('exit', () => {
+  try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
+});
 
 test('status() returns an object with ready + binary + ffmpeg + model + missing + installHint', async () => {
   invalidateCache();
