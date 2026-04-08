@@ -167,7 +167,7 @@ Per-device snippets, themes, and font size are persisted to the same config file
 ## Development
 
 ```bash
-git clone https://github.com/YOUR_USERNAME/tvoice.git
+git clone https://github.com/Aramente/tvoice.git
 cd tvoice
 npm install
 npm run dev        # localhost only, no tunnel

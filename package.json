@@ -35,11 +35,11 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/YOUR_USERNAME/tvoice.git"
+    "url": "git+https://github.com/Aramente/tvoice.git"
   },
-  "homepage": "https://github.com/YOUR_USERNAME/tvoice#readme",
+  "homepage": "https://github.com/Aramente/tvoice#readme",
   "bugs": {
-    "url": "https://github.com/YOUR_USERNAME/tvoice/issues"
+    "url": "https://github.com/Aramente/tvoice/issues"
   },
   "engines": {
     "node": ">=18"
