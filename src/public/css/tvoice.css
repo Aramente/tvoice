@@ -137,6 +137,52 @@ pre.code { display: block; white-space: pre-wrap; }
   touch-action: pan-y;
 }
 
+/* iOS-style selection handles — two draggable circles anchored at the
+ * start and end of the current terminal selection. Large hit area
+ * (touch target) with a smaller visible dot inside. */
+.sel-handle {
+  position: absolute;
+  width: 44px;
+  height: 44px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+  pointer-events: auto;
+  touch-action: none;
+  transform: translate(-50%, -50%);
+}
+.sel-handle-dot {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--c-cyan);
+  box-shadow: 0 0 0 2px rgba(10, 10, 10, 0.9), 0 2px 8px rgba(0, 0, 0, 0.6);
+}
+.sel-handle-start .sel-handle-dot { box-shadow: 0 0 0 2px rgba(10, 10, 10, 0.9), 0 -2px 8px rgba(0, 0, 0, 0.6); }
+.sel-handle.dragging .sel-handle-dot { background: var(--c-yellow); transform: scale(1.15); }
+
+.sel-copy-btn {
+  position: absolute;
+  z-index: 11;
+  transform: translate(-50%, -100%);
+  background: var(--c-cyan);
+  color: #000;
+  border: 0;
+  border-radius: 8px;
+  padding: 10px 16px;
+  font-family: system-ui, -apple-system, sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.5);
+  cursor: pointer;
+  min-height: 40px;
+  pointer-events: auto;
+  margin-top: -10px;
+  white-space: nowrap;
+}
+.sel-copy-btn:active { transform: translate(-50%, -100%) scale(0.96); }
+
 /* Login-required overlay */
 .login-required {
   position: fixed;

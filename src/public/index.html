@@ -43,11 +43,23 @@
     <header class="tab-bar" id="tab-bar">
       <div class="tabs" id="tabs" role="tablist"></div>
       <button id="new-tab-btn" class="tab-btn" aria-label="New terminal">+</button>
+      <button id="voice-header-btn" class="tab-btn voice-header" aria-label="Voice input">mic</button>
       <button id="menu-btn" class="tab-btn" aria-label="Menu">…</button>
     </header>
 
     <!-- Terminal canvas -->
-    <main class="terminal-host" id="terminal-host"></main>
+    <main class="terminal-host" id="terminal-host">
+      <!-- iOS-style selection handles + floating copy button. Managed by
+           app.js during a long-press selection. Always in the DOM, hidden
+           via .hidden until selection is active. -->
+      <div class="sel-handle sel-handle-start hidden" id="sel-handle-start" aria-hidden="true">
+        <span class="sel-handle-dot"></span>
+      </div>
+      <div class="sel-handle sel-handle-end hidden" id="sel-handle-end" aria-hidden="true">
+        <span class="sel-handle-dot"></span>
+      </div>
+      <button class="sel-copy-btn hidden" id="sel-copy-btn" aria-hidden="true">Copy</button>
+    </main>
 
     <!-- Special key toolbar (floats above virtual keyboard).
          Structure mirrors the Tvoice design brief exactly:

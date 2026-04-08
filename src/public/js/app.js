@@ -113,97 +113,13 @@ async function main() {
         if (text) realSendInput(text);
       } catch { /* clipboard blocked */ }
     },
-    onDoubleTap: async ({ x, y }) => {
-      // Double-tap copies the row under the tap position to the clipboard.
-      const s = app.tabManager.activeSession();
-      if (!s?.term) return;
-      const cell = pixelToCell(x, y, s.term);
-      if (!cell) return;
-      try {
-        const buf = s.term.buffer.active;
-        const line = buf.getLine(buf.viewportY + cell.row);
-        const text = line ? line.translateToString(true).trim() : '';
-        if (!text) { toast('Empty line', 'error'); return; }
-        await navigator.clipboard.writeText(text);
-        toast(`Copied: ${text.length > 40 ? text.slice(0, 40) + '…' : text}`, 'success');
-      } catch (err) {
-        toast('Copy failed: ' + err.message, 'error');
-      }
-    },
-    // Long-press + drag selection
-    onSelectStart: ({ x, y }) => {
-      const s = app.tabManager.activeSession();
-      if (!s?.term) return;
-      const cell = pixelToCell(x, y, s.term);
-      if (!cell) return;
-      const absRow = s.term.buffer.active.viewportY + cell.row;
-      app._selection = { term: s.term, anchor: { col: cell.col, row: absRow }, cursor: { col: cell.col, row: absRow } };
-      try {
-        s.term.select(cell.col, absRow, 1);
-        if ('vibrate' in navigator) navigator.vibrate(10);
-      } catch { /* ignore */ }
-    },
-    onSelectMove: ({ x, y }) => {
-      const sel = app._selection;
-      if (!sel) return;
-      const cell = pixelToCell(x, y, sel.term);
-      if (!cell) return;
-      const absRow = sel.term.buffer.active.viewportY + cell.row;
-      sel.cursor = { col: cell.col, row: absRow };
-      const a = sel.anchor;
-      const c = sel.cursor;
-      const cols = sel.term.cols;
-      const aOff = a.row * cols + a.col;
-      const cOff = c.row * cols + c.col;
-      const start = Math.min(aOff, cOff);
-      const end = Math.max(aOff, cOff);
-      const startRow = Math.floor(start / cols);
-      const startCol = start % cols;
-      const length = end - start + 1;
-      try { sel.term.select(startCol, startRow, length); } catch { /* ignore */ }
-    },
-    onSelectEnd: async (info = {}) => {
-      const sel = app._selection;
-      if (!sel) return;
-      if (info.cancelled) {
-        try { sel.term.clearSelection(); } catch { /* ignore */ }
-        app._selection = null;
-        return;
-      }
-      let text = '';
-      try { text = sel.term.getSelection() || ''; } catch { /* ignore */ }
-      if (text.trim()) {
-        try {
-          await navigator.clipboard.writeText(text);
-          toast(`Copied ${text.length} char${text.length === 1 ? '' : 's'}`, 'success');
-        } catch {
-          toast('Selected — tap "copy" in the expanded row to copy', 'info');
-        }
-      }
-      // Keep the highlight briefly so the user sees what was captured, then clear
-      setTimeout(() => {
-        try { sel.term.clearSelection(); } catch { /* ignore */ }
-      }, 1500);
-      app._selection = null;
-    },
+    onLongPress: ({ x, y }) => startWordSelection(x, y),
+    isSelectionActive: () => !!app._selection?.active,
+    onTapOutsideSelection: () => clearSelection(),
   });
 
-  // Helper — convert a screen pixel coordinate to a terminal cell (col, row).
-  // `row` is relative to the visible viewport, not the absolute buffer.
-  function pixelToCell(x, y, term) {
-    const host = el('terminal-host');
-    if (!host || !term) return null;
-    // Prefer the xterm .xterm-screen element for accurate bounds
-    const screen = host.querySelector('.xterm-screen') || term.element;
-    if (!screen) return null;
-    const rect = screen.getBoundingClientRect();
-    if (rect.width === 0 || rect.height === 0) return null;
-    const cellW = rect.width / term.cols;
-    const cellH = rect.height / term.rows;
-    const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - rect.left) / cellW)));
-    const row = Math.max(0, Math.min(term.rows - 1, Math.floor((y - rect.top) / cellH)));
-    return { col, row };
-  }
+  // Wire up the draggable selection handles
+  setupSelectionHandles();
 
   // Drawer + modal wiring
   setupDrawer();
@@ -220,10 +136,19 @@ async function main() {
       if (state === 'unsupported') toast('Voice input not supported in this browser', 'error');
     },
   });
-  el('voice-btn')?.addEventListener('click', () => {
+  const toggleVoice = () => {
     if (app.voice.active) app.voice.stop();
     else app.voice.start();
-  });
+  };
+  el('voice-btn')?.addEventListener('click', toggleVoice);
+  el('voice-header-btn')?.addEventListener('click', toggleVoice);
+  // Reflect active state on both buttons
+  const origOnState = app.voice.onState;
+  app.voice.onState = (state, err) => {
+    const header = el('voice-header-btn');
+    if (header) header.classList.toggle('recording', state === 'listening');
+    origOnState(state, err);
+  };
 
   // Push client
   app.push = new PushClient();
@@ -514,6 +439,234 @@ function handleToolbarAction(action) {
       try { s.term.scrollToBottom(); } catch { /* ignore */ }
     }
   }
+}
+
+// ---------- iOS-style text selection ----------
+//
+// Flow:
+//   long-press on terminal → selectWord() picks the word under finger, sets
+//     term.select() for that range, and positions the start + end handles
+//     at the selection corners + shows the floating "Copy" button
+//   drag a handle → handlePointerMove recomputes the selection range from
+//     the dragged handle's pointer position while keeping the other anchor
+//     fixed
+//   tap the Copy button → writes term.getSelection() to the clipboard
+//   tap anywhere else → clearSelection()
+//
+// app._selection shape:
+//   { active, term, start: {col, absRow}, end: {col, absRow} }
+// Both coordinates use ABSOLUTE buffer rows, not viewport-relative.
+
+function pixelToCell(x, y, term) {
+  const host = el('terminal-host');
+  if (!host || !term) return null;
+  const screen = host.querySelector('.xterm-screen') || term.element;
+  if (!screen) return null;
+  const rect = screen.getBoundingClientRect();
+  if (rect.width === 0 || rect.height === 0) return null;
+  const cellW = rect.width / term.cols;
+  const cellH = rect.height / term.rows;
+  const col = Math.max(0, Math.min(term.cols - 1, Math.floor((x - rect.left) / cellW)));
+  const viewRow = Math.max(0, Math.min(term.rows - 1, Math.floor((y - rect.top) / cellH)));
+  return { col, viewRow };
+}
+
+// Convert a (col, viewRow) pair to absolute pixel coordinates (client space).
+function cellToPixel(col, viewRow, term, corner = 'tl') {
+  const host = el('terminal-host');
+  if (!host || !term) return null;
+  const screen = host.querySelector('.xterm-screen') || term.element;
+  if (!screen) return null;
+  const rect = screen.getBoundingClientRect();
+  const cellW = rect.width / term.cols;
+  const cellH = rect.height / term.rows;
+  let x = rect.left + col * cellW;
+  let y = rect.top + viewRow * cellH;
+  if (corner === 'tr' || corner === 'br') x += cellW;
+  if (corner === 'bl' || corner === 'br') y += cellH;
+  return { x, y };
+}
+
+// Pick the word around (col, absRow) using the xterm buffer.
+function detectWord(term, col, absRow) {
+  const line = term.buffer.active.getLine(absRow);
+  if (!line) return { startCol: col, endCol: col };
+  const text = line.translateToString(true);
+  const isWordChar = (ch) => ch && /[\w/.\-+@]/.test(ch);
+
+  // If the tapped char is whitespace, just select the single cell
+  if (!isWordChar(text[col])) return { startCol: col, endCol: col + 1 };
+
+  let start = col;
+  while (start > 0 && isWordChar(text[start - 1])) start--;
+  let end = col;
+  while (end < text.length && isWordChar(text[end])) end++;
+  return { startCol: start, endCol: end };
+}
+
+function startWordSelection(x, y) {
+  const s = app.tabManager.activeSession();
+  if (!s?.term) return;
+  const cell = pixelToCell(x, y, s.term);
+  if (!cell) return;
+  const absRow = s.term.buffer.active.viewportY + cell.viewRow;
+  const { startCol, endCol } = detectWord(s.term, cell.col, absRow);
+
+  applySelectionRange(s.term, { col: startCol, absRow }, { col: endCol - 1 < startCol ? startCol : endCol - 1, absRow });
+
+  app._selection = {
+    active: true,
+    term: s.term,
+    start: { col: startCol, absRow },
+    end: { col: endCol - 1 < startCol ? startCol : endCol - 1, absRow },
+  };
+  showSelectionHandles();
+  try { if ('vibrate' in navigator) navigator.vibrate([6, 10, 6]); } catch { /* ignore */ }
+}
+
+function applySelectionRange(term, a, b) {
+  // Normalise so lo <= hi, then ask xterm to highlight the contiguous
+  // range via term.select(startCol, startRow, length).
+  const cols = term.cols;
+  const aOff = a.absRow * cols + a.col;
+  const bOff = b.absRow * cols + b.col;
+  const lo = Math.min(aOff, bOff);
+  const hi = Math.max(aOff, bOff);
+  const startRow = Math.floor(lo / cols);
+  const startCol = lo % cols;
+  const length = hi - lo + 1;
+  try { term.select(startCol, startRow, length); } catch { /* ignore */ }
+}
+
+function showSelectionHandles() {
+  const sel = app._selection;
+  if (!sel) return;
+  positionSelectionHandles();
+  el('sel-handle-start')?.classList.remove('hidden');
+  el('sel-handle-end')?.classList.remove('hidden');
+  el('sel-copy-btn')?.classList.remove('hidden');
+}
+
+function positionSelectionHandles() {
+  const sel = app._selection;
+  if (!sel) return;
+  const term = sel.term;
+  // Translate absRows back to viewport-relative for pixel lookup
+  const top = term.buffer.active.viewportY;
+  const startViewRow = sel.start.absRow - top;
+  const endViewRow   = sel.end.absRow   - top;
+
+  const hStart = el('sel-handle-start');
+  const hEnd   = el('sel-handle-end');
+  const btn    = el('sel-copy-btn');
+  const host   = el('terminal-host');
+  if (!host) return;
+  const hostRect = host.getBoundingClientRect();
+
+  // Start handle lives at the top-left of the first selected cell
+  const startPx = cellToPixel(sel.start.col, startViewRow, term, 'tl');
+  if (startPx && hStart) {
+    const visible = startViewRow >= 0 && startViewRow < term.rows;
+    hStart.style.left = (startPx.x - hostRect.left) + 'px';
+    hStart.style.top  = (startPx.y - hostRect.top) + 'px';
+    hStart.classList.toggle('hidden', !visible);
+  }
+  // End handle lives at the bottom-right of the last selected cell
+  const endPx = cellToPixel(sel.end.col, endViewRow, term, 'br');
+  if (endPx && hEnd) {
+    const visible = endViewRow >= 0 && endViewRow < term.rows;
+    hEnd.style.left = (endPx.x - hostRect.left) + 'px';
+    hEnd.style.top  = (endPx.y - hostRect.top) + 'px';
+    hEnd.classList.toggle('hidden', !visible);
+  }
+  // Copy button sits above the end handle
+  if (endPx && btn) {
+    btn.style.left = (endPx.x - hostRect.left) + 'px';
+    btn.style.top  = (endPx.y - hostRect.top) + 'px';
+  }
+}
+
+function clearSelection() {
+  if (!app._selection) return;
+  try { app._selection.term.clearSelection(); } catch { /* ignore */ }
+  app._selection = null;
+  el('sel-handle-start')?.classList.add('hidden');
+  el('sel-handle-end')?.classList.add('hidden');
+  el('sel-copy-btn')?.classList.add('hidden');
+}
+
+function setupSelectionHandles() {
+  const startH = el('sel-handle-start');
+  const endH   = el('sel-handle-end');
+  const btn    = el('sel-copy-btn');
+  if (!startH || !endH || !btn) return;
+
+  // Re-position when the terminal scrolls or resizes
+  window.addEventListener('resize', () => {
+    if (app._selection?.active) positionSelectionHandles();
+  });
+
+  // Re-position on xterm scroll so handles follow the buffer view
+  const host = el('terminal-host');
+  if (host) {
+    host.addEventListener('scroll', () => {
+      if (app._selection?.active) positionSelectionHandles();
+    }, true);
+  }
+
+  bindHandleDrag(startH, 'start');
+  bindHandleDrag(endH, 'end');
+
+  btn.addEventListener('click', async (e) => {
+    e.stopPropagation();
+    const sel = app._selection;
+    if (!sel) return;
+    let text = '';
+    try { text = sel.term.getSelection() || ''; } catch { /* ignore */ }
+    if (!text) { toast('Nothing selected', 'error'); clearSelection(); return; }
+    try {
+      await navigator.clipboard.writeText(text);
+      toast(`Copied ${text.length} char${text.length === 1 ? '' : 's'}`, 'success');
+    } catch {
+      // Clipboard API blocked — fall back: send the text into the paste modal
+      // textarea so the user can at least long-press to copy it manually
+      toast('Clipboard blocked — selection still visible', 'error');
+      return;
+    }
+    clearSelection();
+  });
+}
+
+function bindHandleDrag(handleEl, which) {
+  let dragging = false;
+  handleEl.addEventListener('pointerdown', (e) => {
+    if (!app._selection) return;
+    e.preventDefault();
+    e.stopPropagation();
+    dragging = true;
+    handleEl.classList.add('dragging');
+    handleEl.setPointerCapture(e.pointerId);
+  });
+  handleEl.addEventListener('pointermove', (e) => {
+    if (!dragging) return;
+    const sel = app._selection;
+    if (!sel) return;
+    const cell = pixelToCell(e.clientX, e.clientY, sel.term);
+    if (!cell) return;
+    const absRow = sel.term.buffer.active.viewportY + cell.viewRow;
+    if (which === 'start') sel.start = { col: cell.col, absRow };
+    else                   sel.end   = { col: cell.col, absRow };
+    applySelectionRange(sel.term, sel.start, sel.end);
+    positionSelectionHandles();
+  });
+  const endDrag = (e) => {
+    if (!dragging) return;
+    dragging = false;
+    handleEl.classList.remove('dragging');
+    try { handleEl.releasePointerCapture(e.pointerId); } catch { /* ignore */ }
+  };
+  handleEl.addEventListener('pointerup', endDrag);
+  handleEl.addEventListener('pointercancel', endDrag);
 }
 
 async function handleCopy() {

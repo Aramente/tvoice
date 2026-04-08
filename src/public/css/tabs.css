@@ -97,3 +97,16 @@
 .tab-btn:hover { color: var(--c-cyan); border-color: var(--c-cyan); }
 #new-tab-btn { color: var(--c-cyan); border-color: var(--border-strong); }
 #menu-btn { min-width: 40px; font-size: 20px; }
+#voice-header-btn {
+  color: var(--c-magenta);
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  padding: 0 10px;
+}
+#voice-header-btn.recording {
+  background: var(--c-red);
+  color: #000;
+  border-color: var(--c-red);
+  animation: pulse 0.8s ease-in-out infinite;
+}

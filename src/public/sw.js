@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v5-force-refresh';
+const VERSION = 'tvoice-v6-ios-selection';
 const SHELL = [
   '/',
   '/css/tvoice.css',
