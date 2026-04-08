@@ -1,0 +1,74 @@
+/* AI output rendering — tool call overlay, collapsing, summary pills.
+ * The overlay sits above the xterm canvas, tracking line positions via
+ * the xterm buffer API. Most of this is invisible until ai-render.js
+ * detects a tool call block. */
+
+.ai-overlay {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 5;
+}
+
+.ai-overlay .tool-call {
+  position: absolute;
+  left: 0;
+  right: 0;
+  background: rgba(59, 130, 246, 0.08);
+  border-left: 3px solid var(--c-blue);
+  pointer-events: auto;
+  padding: 2px 4px 2px 8px;
+  cursor: pointer;
+  transition: background 0.1s;
+}
+.ai-overlay .tool-call:hover {
+  background: rgba(59, 130, 246, 0.16);
+}
+
+.ai-overlay .tool-call.collapsed {
+  height: var(--line-h, 18px);
+  overflow: hidden;
+}
+
+.ai-overlay .tool-summary {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-family: var(--font-family);
+  font-size: 12px;
+  color: var(--c-blue);
+  height: var(--line-h, 18px);
+}
+
+.ai-overlay .tool-summary .caret::before {
+  content: '▶';
+  display: inline-block;
+  transition: transform 0.15s;
+  font-size: 9px;
+}
+.ai-overlay .tool-call:not(.collapsed) .tool-summary .caret::before {
+  transform: rotate(90deg);
+}
+
+.ai-overlay .tool-error { border-left-color: var(--c-red); }
+.ai-overlay .tool-error .tool-summary { color: var(--c-red); }
+
+.ai-overlay .tool-success { border-left-color: var(--c-green); }
+
+/* Jump-to-AI floating button */
+.ai-jump {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  background: rgba(59, 130, 246, 0.8);
+  color: #000;
+  border: 0;
+  border-radius: 20px;
+  padding: 8px 14px;
+  font-size: 12px;
+  font-weight: 600;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+  cursor: pointer;
+  z-index: 15;
+  pointer-events: auto;
+}

@@ -1,0 +1,176 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover, interactive-widget=resizes-content, user-scalable=no">
+  <meta name="theme-color" content="#0A0A0A">
+  <meta name="color-scheme" content="dark">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="Tvoice">
+  <meta name="format-detection" content="telephone=no">
+  <title>Tvoice</title>
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="apple-touch-icon" href="/icons/icon-192.png">
+  <link rel="apple-touch-icon" href="/icons/icon.svg">
+  <link rel="stylesheet" href="/vendor/xterm.css">
+  <link rel="stylesheet" href="/css/tvoice.css">
+  <link rel="stylesheet" href="/css/toolbar.css">
+  <link rel="stylesheet" href="/css/tabs.css">
+  <link rel="stylesheet" href="/css/ai-render.css">
+  <script>window.__TVOICE_VAPID_PUBLIC__ = "{{VAPID_PUBLIC_KEY}}";</script>
+  <script src="/vendor/xterm.js"></script>
+  <script src="/vendor/addon-fit.js"></script>
+  <script src="/vendor/addon-serialize.js"></script>
+  <script src="/vendor/addon-web-links.js"></script>
+</head>
+<body class="tvoice-body">
+  <div id="app" class="app">
+
+    <!-- Login-required overlay (shown when /api/me returns 401) -->
+    <div id="login-required" class="login-required hidden" aria-hidden="true">
+      <div class="login-card">
+        <h1>Tvoice</h1>
+        <p class="muted">This session isn't authenticated yet.</p>
+        <p>Run <code>npx tvoice</code> on your Mac and scan the fresh QR code.</p>
+        <button id="retry-auth" class="btn-primary">Check again</button>
+      </div>
+    </div>
+
+    <!-- Tab bar -->
+    <header class="tab-bar" id="tab-bar">
+      <div class="tabs" id="tabs" role="tablist"></div>
+      <button id="new-tab-btn" class="tab-btn" aria-label="New terminal">+</button>
+      <button id="menu-btn" class="tab-btn" aria-label="Menu">…</button>
+    </header>
+
+    <!-- Terminal canvas -->
+    <main class="terminal-host" id="terminal-host"></main>
+
+    <!-- Special key toolbar (floats above virtual keyboard) -->
+    <nav class="key-toolbar" id="key-toolbar" aria-label="Special keys">
+      <!-- AI row (hidden by default, revealed when Claude Code detected) -->
+      <div class="key-row ai-row" id="ai-row" aria-hidden="true">
+        <button data-ai="yes"    class="key ai-key key-yes">yes</button>
+        <button data-ai="no"     class="key ai-key key-no">no</button>
+        <button data-key="C-c"   class="key">^C</button>
+        <button data-key="C-z"   class="key">^Z</button>
+        <button data-ai="collapse" class="key">collapse</button>
+        <button data-ai="scroll-ai" class="key">jump ai</button>
+      </div>
+
+      <!-- Expanded row (swipe up to reveal) -->
+      <div class="key-row expanded-row" id="expanded-row" aria-hidden="true">
+        <button data-key="/"    class="key">/</button>
+        <button data-key="-"    class="key">-</button>
+        <button data-key="|"    class="key">|</button>
+        <button data-key="$"    class="key">$</button>
+        <button data-key="~"    class="key">~</button>
+        <button data-key="_"    class="key">_</button>
+        <button data-key="*"    class="key">*</button>
+        <button data-key="&quot;" class="key">"</button>
+        <button data-key="'"    class="key">'</button>
+        <button data-key=":"    class="key">:</button>
+        <button data-key=";"    class="key">;</button>
+        <button data-key="="    class="key">=</button>
+      </div>
+
+      <!-- Primary row (always visible) -->
+      <div class="key-row primary-row">
+        <button data-key="Escape" class="key key-mod">esc</button>
+        <button data-key="Tab"    class="key key-mod">tab</button>
+        <button data-sticky="Ctrl" class="key key-sticky" id="sticky-ctrl">ctrl</button>
+        <button data-sticky="Alt"  class="key key-sticky" id="sticky-alt">alt</button>
+        <button data-key="ArrowUp"    class="key key-arrow">↑</button>
+        <button data-key="ArrowDown"  class="key key-arrow">↓</button>
+        <button data-key="ArrowLeft"  class="key key-arrow">←</button>
+        <button data-key="ArrowRight" class="key key-arrow">→</button>
+        <button data-tool="voice" class="key key-voice" id="voice-btn" aria-label="Voice input">mic</button>
+        <button data-tool="snippets" class="key" aria-label="Snippets">snip</button>
+        <button data-tool="expand" class="key key-expand" id="expand-btn" aria-label="More keys">▲</button>
+      </div>
+    </nav>
+
+    <!-- Menu drawer -->
+    <aside class="drawer hidden" id="menu-drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-drawer-close></div>
+      <div class="drawer-panel">
+        <header class="drawer-header">
+          <h2>Tvoice</h2>
+          <button class="drawer-close" data-drawer-close aria-label="Close">×</button>
+        </header>
+        <section class="drawer-section">
+          <h3>Appearance</h3>
+          <label class="field">
+            <span>Font size</span>
+            <input type="range" id="font-size" min="10" max="24" step="1" value="14">
+            <span id="font-size-value">14px</span>
+          </label>
+          <label class="field">
+            <span>Soft wrap (AI prose)</span>
+            <input type="checkbox" id="soft-wrap">
+          </label>
+          <label class="field">
+            <span>Theme</span>
+            <select id="theme-select">
+              <option value="oled">OLED (default)</option>
+              <option value="dracula">Dracula</option>
+              <option value="nord">Nord</option>
+              <option value="catppuccin">Catppuccin Mocha</option>
+              <option value="solarized-dark">Solarized Dark</option>
+              <option value="custom">Custom (paste JSON)</option>
+            </select>
+          </label>
+          <textarea id="custom-theme-json" class="hidden" placeholder='{"background":"#000","foreground":"#fff", ...}'></textarea>
+        </section>
+        <section class="drawer-section">
+          <h3>Notifications</h3>
+          <button id="push-enable" class="btn">Enable push notifications</button>
+          <button id="push-test" class="btn btn-ghost">Send test</button>
+          <p class="muted small">On iOS, install this page to the home screen first (Share → Add to Home Screen).</p>
+        </section>
+        <section class="drawer-section">
+          <h3>Snippets</h3>
+          <div id="snippet-list"></div>
+          <div class="field">
+            <input type="text" id="snippet-name" placeholder="Name">
+            <input type="text" id="snippet-body" placeholder="Command">
+            <button id="snippet-add" class="btn-ghost">add</button>
+          </div>
+        </section>
+        <section class="drawer-section">
+          <h3>History</h3>
+          <button id="history-show" class="btn btn-ghost">Show command history</button>
+        </section>
+        <section class="drawer-section">
+          <h3>Session</h3>
+          <button id="logout-btn" class="btn btn-ghost">Log out</button>
+          <p class="muted small" id="version-info"></p>
+        </section>
+      </div>
+    </aside>
+
+    <!-- History panel -->
+    <aside class="drawer hidden" id="history-drawer" aria-hidden="true">
+      <div class="drawer-backdrop" data-drawer-close></div>
+      <div class="drawer-panel">
+        <header class="drawer-header">
+          <h2>History</h2>
+          <button class="drawer-close" data-drawer-close aria-label="Close">×</button>
+        </header>
+        <div class="history-list" id="history-list"></div>
+      </div>
+    </aside>
+
+    <!-- Toast / notification bar -->
+    <div class="toast-stack" id="toast-stack" aria-live="polite"></div>
+
+    <!-- Connection status pill -->
+    <div class="conn-status" id="conn-status"><span class="dot"></span><span id="conn-text">connecting</span></div>
+  </div>
+
+  <script type="module" src="/js/app.js"></script>
+</body>
+</html>

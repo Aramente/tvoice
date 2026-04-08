@@ -1,0 +1,22 @@
+node_modules/
+.DS_Store
+*.log
+.env
+.env.local
+dist/
+coverage/
+.tvoice/
+*.pid
+
+# VAPID keys should live in config, not repo
+vapid-keys.json
+
+# macOS
+.DS_Store
+.AppleDouble
+.LSOverride
+
+# IDEs
+.vscode/
+.idea/
+*.swp

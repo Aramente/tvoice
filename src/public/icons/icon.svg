@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+  <rect width="512" height="512" rx="96" fill="#0A0A0A"/>
+  <g transform="translate(88,144)">
+    <rect x="0" y="0" width="336" height="36" rx="6" fill="#22D3EE"/>
+    <rect x="150" y="36" width="36" height="192" rx="6" fill="#22D3EE"/>
+    <circle cx="168" cy="250" r="14" fill="#4ADE80"/>
+  </g>
+  <g transform="translate(76,388)" fill="#E0E0E0" font-family="ui-monospace, 'JetBrains Mono', monospace" font-size="52" font-weight="700">
+    <text x="0" y="50">tvoice</text>
+  </g>
+</svg>

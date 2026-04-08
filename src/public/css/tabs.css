@@ -1,0 +1,94 @@
+/* Tab bar */
+
+.tab-bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: var(--tab-h);
+  padding: 0 4px;
+  background: var(--bg-elev);
+  border-bottom: 1px solid var(--border);
+  flex: 0 0 var(--tab-h);
+  z-index: 20;
+}
+
+.tabs {
+  display: flex;
+  flex: 1;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+  gap: 2px;
+}
+.tabs::-webkit-scrollbar { display: none; }
+
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px;
+  min-height: 32px;
+  max-width: 160px;
+  background: transparent;
+  color: var(--fg-dim);
+  border: 1px solid transparent;
+  border-radius: 6px;
+  font-size: 12px;
+  font-family: var(--font-family);
+  cursor: pointer;
+  white-space: nowrap;
+  flex: 0 0 auto;
+}
+
+.tab[aria-selected="true"] {
+  background: var(--bg);
+  color: var(--fg);
+  border-color: var(--border-strong);
+}
+
+.tab .tab-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 120px;
+}
+
+.tab .tab-ai-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: transparent;
+  flex: 0 0 6px;
+}
+.tab[data-ai="true"] .tab-ai-dot {
+  background: var(--c-blue);
+}
+.tab[data-ai-awaiting="true"] .tab-ai-dot {
+  background: var(--c-yellow);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+
+.tab .tab-close {
+  background: transparent;
+  border: 0;
+  color: var(--fg-dim);
+  font-size: 16px;
+  min-width: 24px;
+  min-height: 24px;
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+.tab .tab-close:hover { color: var(--fg); }
+
+.tab-btn {
+  flex: 0 0 auto;
+  min-width: 36px;
+  min-height: 32px;
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  color: var(--fg-dim);
+  font-size: 16px;
+  cursor: pointer;
+}
+.tab-btn:hover { color: var(--fg); border-color: var(--border); }
