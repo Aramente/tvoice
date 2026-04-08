@@ -10,6 +10,7 @@ export function setupGestures({
   onThreeFingerTap,
   onLongPress,
   onTapOutsideSelection,
+  onScroll,
   isSelectionActive,
 }) {
   let pointers = new Map();
@@ -19,9 +20,13 @@ export function setupGestures({
   let pinched = false;
   let longPressTimer = null;
   let longPressFired = false;
+  let scrolling = false;
+  let lastY = 0;
 
   const LONG_PRESS_MS = 350;
   const MOVE_CANCEL_PX = 12;
+  const SCROLL_START_PX = 14;   // vertical drag must exceed this to start a scroll
+  const SCROLL_DOMINANCE = 1.3; // dy must be > dx * 1.3 to count as vertical
 
   host.addEventListener('pointerdown', (e) => {
     pointers.set(e.pointerId, { x: e.clientX, y: e.clientY });
@@ -35,6 +40,8 @@ export function setupGestures({
       startTime = Date.now();
       startX = e.clientX;
       startY = e.clientY;
+      lastY = e.clientY;
+      scrolling = false;
       longPressFired = false;
       // Long-press starts a word selection via onLongPress. The app layer
       // is responsible for detecting the word under the finger and showing
@@ -42,7 +49,7 @@ export function setupGestures({
       if (typeof onLongPress === 'function') {
         longPressTimer = setTimeout(() => {
           longPressTimer = null;
-          if (pointers.size === 1) {
+          if (pointers.size === 1 && !scrolling) {
             longPressFired = true;
             onLongPress({ x: startX, y: startY });
           }
@@ -61,6 +68,28 @@ export function setupGestures({
       onPinch({ phase: 'move', ratio });
       return;
     }
+
+    // Scroll: vertical drag that's mostly vertical and past the start
+    // threshold. Once in scroll mode, every move feeds an onScroll(delta)
+    // callback that the app translates into term.scrollLines().
+    if (pointers.size === 1 && !pinched && !longPressFired) {
+      const dxTotal = e.clientX - startX;
+      const dyTotal = e.clientY - startY;
+      if (!scrolling &&
+          Math.abs(dyTotal) > SCROLL_START_PX &&
+          Math.abs(dyTotal) > Math.abs(dxTotal) * SCROLL_DOMINANCE) {
+        scrolling = true;
+        // Cancel the long-press timer — vertical drag is clearly not a tap
+        if (longPressTimer) { clearTimeout(longPressTimer); longPressTimer = null; }
+      }
+      if (scrolling) {
+        const dy = e.clientY - lastY;
+        lastY = e.clientY;
+        if (typeof onScroll === 'function') onScroll(dy);
+        return;
+      }
+    }
+
     // Cancel long-press if the finger moved too much before it fired
     if (longPressTimer) {
       const dx = Math.abs(e.clientX - startX);
@@ -76,6 +105,13 @@ export function setupGestures({
     if (longPressTimer) {
       clearTimeout(longPressTimer);
       longPressTimer = null;
+    }
+    // If we were in scroll mode, just end it — don't count this as a
+    // tap or swipe.
+    if (scrolling) {
+      scrolling = false;
+      pointers.delete(e.pointerId);
+      return;
     }
     if (pointers.size === 1 && !pinched && !longPressFired) {
       const dx = e.clientX - startX;

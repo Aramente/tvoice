@@ -117,6 +117,24 @@ async function main() {
     onLongPress: ({ x, y }) => startWordSelection(x, y),
     isSelectionActive: () => !!app._selection?.active,
     onTapOutsideSelection: () => clearSelection(),
+    // Synthesize terminal scroll from vertical touch drags. xterm's own
+    // touch scroll is unreliable on iOS — driving term.scrollLines()
+    // directly from my gesture handler bypasses that entirely.
+    onScroll: (deltaY) => {
+      const s = app.tabManager.activeSession();
+      if (!s?.term) return;
+      const rect = s.term.element?.getBoundingClientRect();
+      if (!rect || !rect.height) return;
+      const lineH = rect.height / s.term.rows;
+      if (lineH <= 0) return;
+      // Positive deltaY means the finger moved DOWN, which should show
+      // older content (scroll UP in the buffer). xterm.scrollLines(n) with
+      // negative n moves toward older content.
+      const lines = -Math.round(deltaY / lineH);
+      if (lines !== 0) {
+        try { s.term.scrollLines(lines); } catch { /* ignore */ }
+      }
+    },
   });
 
   // Wire up the draggable selection handles
@@ -187,27 +205,34 @@ async function main() {
 }
 
 function maybeShowFirstRunHints() {
+  // Keep the hints for the first TWO sessions so they sink in, then
+  // never show again. Spaced further apart (9 s) so they don't rush.
+  let sessionCount = 0;
   try {
-    if (localStorage.getItem('tvoice.onboarded') === '1') return;
+    sessionCount = parseInt(localStorage.getItem('tvoice.sessions') || '0', 10) || 0;
   } catch { return; }
+  if (sessionCount >= 2) return;
+
+  try {
+    localStorage.setItem('tvoice.sessions', String(sessionCount + 1));
+  } catch { /* ignore */ }
+
   const hints = [
-    'Long-press a word in the terminal to select it → drag handles → Copy',
-    'Swipe up on the toolbar grip for more keys (/ - + = | $ ~ _ *)',
-    'Swipe left/right on the terminal to switch tabs',
-    'Tap the mic button to dictate — whisper runs on your Mac',
+    'Tip: long-press a word in the terminal → drag the handles → Copy',
+    'Tip: swipe up on the toolbar grip for more keys (/ - + = | $ ~ _ *)',
+    'Tip: swipe left/right on the terminal to switch tabs',
+    'Tip: tap the mic button to dictate — whisper runs on your Mac',
   ];
+  const INTERVAL_MS = 9000;  // slower than v9 (was 4.5 s), gives time to read
+  const START_DELAY_MS = 3500;
   let i = 0;
   const show = () => {
-    if (i >= hints.length) {
-      try { localStorage.setItem('tvoice.onboarded', '1'); } catch { /* ignore */ }
-      return;
-    }
+    if (i >= hints.length) return;
     toast(hints[i], 'info');
     i += 1;
-    setTimeout(show, 4500);
+    setTimeout(show, INTERVAL_MS);
   };
-  // Delay so the first hint doesn't race with the initial terminal render
-  setTimeout(show, 2000);
+  setTimeout(show, START_DELAY_MS);
 }
 
 // ---------- Auth ----------

@@ -1,14 +1,39 @@
 # Tvoice
 
-Mobile-first PWA terminal for steering AI coding agents from your phone.
+[![tests](https://github.com/Aramente/tvoice/actions/workflows/test.yml/badge.svg)](https://github.com/Aramente/tvoice/actions/workflows/test.yml)
+[![license](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+[![node](https://img.shields.io/badge/node-%E2%89%A518-brightgreen.svg)](#requirements)
+[![status](https://img.shields.io/badge/status-alpha-orange.svg)](#status)
 
-One command, a QR code, and your phone becomes the command center for Claude Code.
+> **Status: alpha.** Tvoice gives you a live shell on your Mac. Read [SECURITY.md](SECURITY.md) before deploying anywhere that isn't your own laptop on your own private network.
+
+Mobile-first PWA terminal for steering AI coding agents from your phone. One command, a QR code, and your phone becomes the command center for Claude Code.
 
 ```
 npx tvoice
 ```
 
-Scan the QR code on your phone. You are in. No App Store, no SSH setup, no 20-minute Cloudflare + tmux + ntfy + mosh + Tailscale ceremony. Just a terminal that actually works on a 6-inch screen, with a special-key toolbar, collapsible AI output, and push notifications when your agent needs input.
+Scan the QR code on your phone. You're in. No App Store, no SSH setup, no 20-minute Cloudflare + tmux + ntfy + mosh + Tailscale ceremony. Just a terminal that actually works on a 6-inch screen — with a special-key toolbar, iOS-native-style text selection, collapsible AI output, push notifications when your agent needs input, and **local Whisper voice input that works inside the iOS PWA sandbox**.
+
+## Table of contents
+
+- [Why Tvoice exists](#why-tvoice-exists)
+- [What it is](#what-it-is)
+- [Quick start](#quick-start)
+- [CLI flags](#cli-flags)
+- [How auth works](#how-auth-works)
+- [How sessions work](#how-sessions-work)
+- [The special key toolbar](#the-special-key-toolbar)
+- [Voice input](#voice-input-ios-compatible--runs-whispercpp-on-your-mac)
+- [AI output rendering](#ai-output-rendering)
+- [Push notifications](#push-notifications)
+- [Gestures](#gestures)
+- [Configuration](#configuration)
+- [Development](#development)
+- [Architecture](#architecture)
+- [Status](#status)
+- [Security](#security)
+- [License](#license)
 
 ## Why Tvoice exists
 
@@ -330,6 +355,18 @@ Things that are most likely to need tightening first:
 - iOS PWA keyboard-dock behavior (the `visualViewport` math)
 - Cloudflare Tunnel URL parsing regex
 - tmux capture-pane performance under very chatty sessions
+
+## Security
+
+Tvoice gives the authenticated user a live shell on the machine running the server. That's the highest privilege a process can have on your account. Read [SECURITY.md](SECURITY.md) before deploying anywhere that isn't your own laptop on your own private network — especially the threat model and the "what Tvoice does NOT do yet" section.
+
+Short version:
+- Single trust boundary: anyone with a valid cookie gets a shell as your user
+- Safe deployment: over your own Tailscale tailnet, or localhost only
+- Risky: on a LAN with guests, or behind a public reverse proxy
+- Don't: expose to the public internet without additional auth in front
+
+To report a vulnerability, open a private GitHub Security Advisory at [github.com/Aramente/tvoice/security/advisories/new](https://github.com/Aramente/tvoice/security/advisories/new) — please don't file a public issue.
 
 ## License
 

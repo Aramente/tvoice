@@ -1,0 +1,40 @@
+name: test
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  test:
+    name: node ${{ matrix.node }} / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+        node: [18, 20, 22]
+
+    steps:
+      - name: checkout
+        uses: actions/checkout@v4
+
+      - name: setup node
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          cache: npm
+
+      - name: install dependencies
+        run: npm ci --prefer-offline --no-audit --no-fund
+
+      - name: run tests
+        run: npm test
+        env:
+          # Make sure no test can touch a real ~/.tvoice by accident.
+          # This is a belt-and-braces addition — each test file also sets
+          # its own TVOICE_CONFIG_DIR via mkdtempSync — but CI should
+          # never have credentials in the first place.
+          TVOICE_CONFIG_DIR: ${{ runner.temp }}/tvoice-ci
