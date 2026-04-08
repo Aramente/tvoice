@@ -144,9 +144,25 @@
           <textarea id="custom-theme-json" class="hidden" placeholder='{"background":"#000","foreground":"#fff", ...}'></textarea>
         </section>
         <section class="drawer-section">
-          <h3>Input</h3>
-          <button id="voice-btn" class="btn">Voice input (experimental)</button>
-          <p class="muted small">Web Speech API — works on desktop Chrome/Edge, flaky on iOS Safari. Use your keyboard's mic button for iOS dictation instead.</p>
+          <h3>Voice input</h3>
+          <button id="voice-btn" class="btn">Start recording</button>
+          <label class="field">
+            <span>Language</span>
+            <select id="voice-lang">
+              <option value="auto">Auto-detect</option>
+              <option value="fr">Français</option>
+              <option value="en">English</option>
+              <option value="es">Español</option>
+              <option value="de">Deutsch</option>
+              <option value="it">Italiano</option>
+              <option value="pt">Português</option>
+              <option value="nl">Nederlands</option>
+              <option value="ja">日本語</option>
+              <option value="zh">中文</option>
+            </select>
+          </label>
+          <p class="muted small">Audio runs through whisper.cpp on your Mac — nothing leaves the machine.</p>
+          <p class="muted small" id="voice-engine-status">Checking engine…</p>
         </section>
         <section class="drawer-section">
           <h3>Notifications</h3>

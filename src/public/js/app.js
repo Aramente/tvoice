@@ -16,7 +16,7 @@ const el = (id) => document.getElementById(id);
 const $ = (sel) => document.querySelector(sel);
 
 const app = {
-  settings: { fontSize: 14, theme: 'oled', softWrap: false, customTheme: null },
+  settings: { fontSize: 14, theme: 'oled', softWrap: false, customTheme: null, voiceLang: 'auto' },
   tabManager: null,
   toolbar: null,
   voice: null,
@@ -180,6 +180,34 @@ async function main() {
       if (res.status === 401) showLoginRequired();
     } catch { /* network blip, ignore */ }
   }, 60_000);
+
+  // One-time gesture hints for first-time users. We stash a flag in
+  // localStorage so the hints don't nag on every reload.
+  maybeShowFirstRunHints();
+}
+
+function maybeShowFirstRunHints() {
+  try {
+    if (localStorage.getItem('tvoice.onboarded') === '1') return;
+  } catch { return; }
+  const hints = [
+    'Long-press a word in the terminal to select it → drag handles → Copy',
+    'Swipe up on the toolbar grip for more keys (/ - + = | $ ~ _ *)',
+    'Swipe left/right on the terminal to switch tabs',
+    'Tap the mic button to dictate — whisper runs on your Mac',
+  ];
+  let i = 0;
+  const show = () => {
+    if (i >= hints.length) {
+      try { localStorage.setItem('tvoice.onboarded', '1'); } catch { /* ignore */ }
+      return;
+    }
+    toast(hints[i], 'info');
+    i += 1;
+    setTimeout(show, 4500);
+  };
+  // Delay so the first hint doesn't race with the initial terminal render
+  setTimeout(show, 2000);
 }
 
 // ---------- Auth ----------
@@ -226,6 +254,7 @@ async function loadSettings() {
         app.settings.theme = data.theme;
       }
     }
+    if (typeof data.voiceLang === 'string') app.settings.voiceLang = data.voiceLang;
   } catch { /* ignore */ }
 }
 
@@ -238,6 +267,7 @@ async function persistSettings() {
       body: JSON.stringify({
         fontSize: app.settings.fontSize,
         theme: app.settings.theme === 'custom' ? app.settings.customTheme : app.settings.theme,
+        voiceLang: app.settings.voiceLang,
       }),
     });
   } catch { /* ignore */ }
@@ -334,6 +364,20 @@ function setupDrawer() {
     renderHistory();
     history.classList.remove('hidden');
   });
+
+  // Voice language picker
+  const langSelect = el('voice-lang');
+  if (langSelect) {
+    langSelect.value = app.settings.voiceLang || 'auto';
+    langSelect.addEventListener('change', (e) => {
+      app.settings.voiceLang = e.target.value;
+      persistSettings();
+    });
+  }
+
+  // Surface whisper engine status in the drawer so the user knows whether
+  // voice will work BEFORE they tap the mic.
+  refreshVoiceEngineStatus();
 
   // Logout
   el('logout-btn')?.addEventListener('click', async () => {
@@ -486,7 +530,8 @@ function setupVoiceFlow() {
         statusEl.textContent = 'Transcribing…';
         hintEl.textContent = 'whisper.cpp on your Mac, not the cloud';
         try {
-          const res = await fetch('/api/transcribe?lang=auto', {
+          const lang = encodeURIComponent(app.settings.voiceLang || 'auto');
+          const res = await fetch(`/api/transcribe?lang=${lang}`, {
             method: 'POST',
             credentials: 'same-origin',
             headers: { 'Content-Type': blob.type || 'audio/webm' },
@@ -547,6 +592,27 @@ function setupVoiceFlow() {
     if (headerBtn) headerBtn.classList.toggle('recording', !overlay.classList.contains('hidden'));
   });
   if (overlay && headerBtn) observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+}
+
+async function refreshVoiceEngineStatus() {
+  const statusEl = el('voice-engine-status');
+  if (!statusEl) return;
+  try {
+    const res = await fetch('/api/voice/status', { credentials: 'same-origin' });
+    if (!res.ok) throw new Error('status ' + res.status);
+    const st = await res.json();
+    if (st.ready) {
+      statusEl.textContent = 'Engine ready — whisper.cpp on your Mac';
+      statusEl.style.color = 'var(--c-green)';
+    } else {
+      const miss = (st.missing || []).join(', ');
+      statusEl.textContent = `Missing: ${miss}. ${st.installHint || ''}`;
+      statusEl.style.color = 'var(--c-red)';
+    }
+  } catch (err) {
+    statusEl.textContent = 'Status unavailable (' + err.message + ')';
+    statusEl.style.color = 'var(--fg-dim)';
+  }
 }
 
 function showInstallHint(err) {
@@ -753,14 +819,20 @@ function setupSelectionHandles() {
     try {
       await navigator.clipboard.writeText(text);
       toast(`Copied ${text.length} char${text.length === 1 ? '' : 's'}`, 'success');
+      flashCopy();
     } catch {
-      // Clipboard API blocked — fall back: send the text into the paste modal
-      // textarea so the user can at least long-press to copy it manually
       toast('Clipboard blocked — selection still visible', 'error');
       return;
     }
     clearSelection();
   });
+}
+
+function flashCopy() {
+  const host = el('terminal-host');
+  if (!host) return;
+  host.classList.add('flash-copy');
+  setTimeout(() => host.classList.remove('flash-copy'), 400);
 }
 
 function bindHandleDrag(handleEl, which) {

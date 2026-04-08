@@ -112,6 +112,11 @@ pre.code { display: block; white-space: pre-wrap; }
   overflow: hidden;
   /* Leave room for the toolbar which floats above via fixed positioning + keyboard offset */
   padding-bottom: calc(var(--toolbar-h) + var(--keyboard-offset) + var(--safe-bottom));
+  box-shadow: inset 0 0 0 0 transparent;
+  transition: box-shadow 0.25s ease-out;
+}
+.terminal-host.flash-copy {
+  box-shadow: inset 0 0 0 2px var(--c-cyan);
 }
 
 .terminal-host .xterm {

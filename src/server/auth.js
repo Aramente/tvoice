@@ -120,6 +120,37 @@ export function resetRateLimit(ip) {
   loginAttempts.delete(ip);
 }
 
+// Generic endpoint rate limiter — token bucket style. One bucket per
+// (ip, key) combo. Call rateLimitCheck(key, ip, { max, windowMs }) before
+// handling an expensive endpoint. Returns { ok, retryMs }.
+const buckets = new Map();
+export function rateLimitCheck(key, ip, { max = 30, windowMs = 60_000 } = {}) {
+  const id = `${key}:${ip}`;
+  const now = Date.now();
+  let bucket = buckets.get(id);
+  if (!bucket || now - bucket.firstAt > windowMs) {
+    bucket = { count: 1, firstAt: now };
+    buckets.set(id, bucket);
+    return { ok: true };
+  }
+  bucket.count += 1;
+  if (bucket.count > max) {
+    return { ok: false, retryMs: windowMs - (now - bucket.firstAt) };
+  }
+  return { ok: true };
+}
+
+// Best-effort cleanup: on every Nth call, drop stale buckets.
+let gcCounter = 0;
+export function rateLimitGc(windowMs = 60_000) {
+  gcCounter += 1;
+  if (gcCounter % 50 !== 0) return;
+  const cutoff = Date.now() - windowMs;
+  for (const [id, bucket] of buckets.entries()) {
+    if (bucket.firstAt < cutoff) buckets.delete(id);
+  }
+}
+
 // Constant-time string comparison for passwords etc.
 export function safeEqual(a, b) {
   if (typeof a !== 'string' || typeof b !== 'string') return false;

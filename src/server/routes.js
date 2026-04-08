@@ -12,6 +12,8 @@ import {
   authMiddleware,
   checkRateLimit,
   resetRateLimit,
+  rateLimitCheck,
+  rateLimitGc,
 } from './auth.js';
 import { transcribe, status as whisperStatus } from './whisper.js';
 
@@ -97,7 +99,20 @@ export function buildRoutes({ cfg, sessions, push }) {
   });
   router.post('/api/push/subscribe', auth, async (req, res) => {
     const sub = req.body;
-    if (!sub || !sub.endpoint) return res.status(400).json({ error: 'bad subscription' });
+    if (!sub || typeof sub.endpoint !== 'string') {
+      return res.status(400).json({ error: 'bad subscription' });
+    }
+    // Only accept endpoints from known push services. This blocks a
+    // malicious client from feeding a junk URL into the server's push
+    // loop and turning tvoice into an outbound HTTP cannon.
+    const ok = /^https:\/\/([a-z0-9.-]+\.)?(googleapis\.com|mozilla\.com|windows\.com|apple\.com|push\.services\.mozilla\.com|wns2-.*\.notify\.windows\.com)\//i
+      .test(sub.endpoint);
+    if (!ok) {
+      return res.status(400).json({ error: 'endpoint not in allowlist of push services' });
+    }
+    if (sub.endpoint.length > 2048) {
+      return res.status(400).json({ error: 'endpoint too long' });
+    }
     await push.subscribe(sub);
     res.json({ ok: true });
   });
@@ -127,19 +142,30 @@ export function buildRoutes({ cfg, sessions, push }) {
     }
   });
 
-  // Accept raw audio bytes. Content-Type signals the container format
-  // (audio/webm, audio/mp4, audio/ogg, etc.). ffmpeg handles whatever
-  // the phone sent.
+  // Accept raw audio bytes. Content-Type signals the container format.
+  // Size limit: 3 MB is ample for ≤30 s of opus audio and caps resource
+  // cost. Rate limit: 20 requests/minute per IP — whisper is the most
+  // expensive endpoint in the app so it needs the tightest bucket.
   router.post(
     '/api/transcribe',
     auth,
-    expressRaw({ type: 'audio/*', limit: '15mb' }),
+    expressRaw({ type: 'audio/*', limit: '3mb' }),
     async (req, res) => {
       try {
+        const ip = req.ip || req.socket.remoteAddress || 'unknown';
+        rateLimitGc();
+        const rl = rateLimitCheck('transcribe', ip, { max: 20, windowMs: 60_000 });
+        if (!rl.ok) {
+          res.setHeader('Retry-After', Math.ceil(rl.retryMs / 1000));
+          return res.status(429).json({ error: 'rate limited', retryMs: rl.retryMs });
+        }
         if (!Buffer.isBuffer(req.body) || req.body.length === 0) {
           return res.status(400).json({ error: 'no audio body' });
         }
-        const lang = typeof req.query.lang === 'string' ? req.query.lang : 'auto';
+        // Allowlist of language codes we'll accept. 'auto' is the default.
+        const requested = typeof req.query.lang === 'string' ? req.query.lang : 'auto';
+        const allowed = new Set(['auto', 'en', 'fr', 'es', 'de', 'it', 'pt', 'nl', 'ja', 'zh', 'ko', 'ru']);
+        const lang = allowed.has(requested) ? requested : 'auto';
         const ext = extForContentType(req.headers['content-type']);
         const text = await transcribe(req.body, { language: lang, ext });
         res.json({ text });
@@ -159,13 +185,18 @@ export function buildRoutes({ cfg, sessions, push }) {
       theme: cfg.theme || null,
       snippets: cfg.snippets || [],
       fontSize: cfg.fontSize || 14,
+      voiceLang: cfg.voiceLang || 'auto',
     });
   });
   router.post('/api/settings', auth, async (req, res) => {
-    const { theme, snippets, fontSize } = req.body || {};
+    const { theme, snippets, fontSize, voiceLang } = req.body || {};
     if (theme !== undefined) cfg.theme = theme;
     if (Array.isArray(snippets)) cfg.snippets = snippets.slice(0, 200);
     if (Number.isFinite(fontSize)) cfg.fontSize = Math.max(8, Math.min(32, fontSize));
+    if (typeof voiceLang === 'string') {
+      const allowed = new Set(['auto', 'en', 'fr', 'es', 'de', 'it', 'pt', 'nl', 'ja', 'zh', 'ko', 'ru']);
+      if (allowed.has(voiceLang)) cfg.voiceLang = voiceLang;
+    }
     const { saveConfig } = await import('./config.js');
     await saveConfig(cfg);
     res.json({ ok: true });

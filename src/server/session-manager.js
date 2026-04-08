@@ -16,10 +16,32 @@ export class SessionManager {
     this.cfg = cfg;
     this.sessions = new Map();  // id -> Session
     this.tmuxAvailable = null;  // null until probed
+    this.reaperTimer = null;
   }
 
   async init() {
     this.tmuxAvailable = await probeTmux();
+    this.startIdleReaper();
+  }
+
+  // Periodically kill sessions that have been idle for more than
+  // `sessionTimeoutMin` (default 7 days from config). Prevents orphan
+  // tmux sessions from accumulating forever on a long-running server.
+  startIdleReaper() {
+    const intervalMs = 15 * 60 * 1000; // check every 15 minutes
+    const timeoutMs = (this.cfg.sessionTimeoutMin || 7 * 24 * 60) * 60 * 1000;
+    this.reaperTimer = setInterval(async () => {
+      const now = Date.now();
+      const stale = [];
+      for (const s of this.sessions.values()) {
+        if (now - s.lastActivity > timeoutMs) stale.push(s.id);
+      }
+      for (const id of stale) {
+        try { await this.closeSession(id); } catch { /* ignore */ }
+      }
+    }, intervalMs);
+    // Let the timer not block process exit
+    if (this.reaperTimer.unref) this.reaperTimer.unref();
   }
 
   listSessions() {
@@ -55,6 +77,10 @@ export class SessionManager {
   }
 
   async shutdown() {
+    if (this.reaperTimer) {
+      clearInterval(this.reaperTimer);
+      this.reaperTimer = null;
+    }
     const jobs = [];
     for (const s of this.sessions.values()) {
       jobs.push(s.kill().catch(() => {}));

@@ -24,8 +24,15 @@ import { randomUUID } from 'node:crypto';
 const execFileP = promisify(execFile);
 
 const MODEL_DIR = join(homedir(), '.tvoice', 'models');
-const DEFAULT_MODEL = 'ggml-base.en.bin';
+// Multilingual model is the default so French, English, and ~97 other
+// languages all work out of the box. English-only users can switch to
+// base.en for a slight accuracy bump.
+const DEFAULT_MODEL = 'ggml-base.bin';
 const MODEL_URL = `https://huggingface.co/ggerganov/whisper.cpp/resolve/main/${DEFAULT_MODEL}`;
+// When a language is forced to 'en', we prefer the English-only model if
+// it's on disk — it's slightly more accurate for English and is usually
+// present if someone installed whisper.cpp via brew.
+const EN_ONLY_MODEL = 'ggml-base.en.bin';
 
 // Technical-vocabulary bias — sent to whisper as --prompt so the decoder
 // is nudged toward command-line and developer tokens.
@@ -84,18 +91,34 @@ async function findFfmpeg() {
   return p;
 }
 
-async function findModel() {
-  if (cache.model !== undefined) return cache.model;
-  const candidates = [
-    join(MODEL_DIR, DEFAULT_MODEL),
-    '/opt/homebrew/share/whisper-cpp/models/' + DEFAULT_MODEL,
-    '/usr/local/share/whisper-cpp/models/' + DEFAULT_MODEL,
-    '/opt/homebrew/opt/whisper-cpp/share/whisper-cpp/models/' + DEFAULT_MODEL,
+async function findModel(preferEnOnly = false) {
+  // Don't cache when we're using a specific language preference, since the
+  // answer depends on the preference. Only cache the default multilingual
+  // lookup.
+  if (!preferEnOnly && cache.model !== undefined) return cache.model;
+
+  const modelsToTry = preferEnOnly
+    ? [EN_ONLY_MODEL, DEFAULT_MODEL]
+    : [DEFAULT_MODEL, EN_ONLY_MODEL];
+
+  const dirs = [
+    MODEL_DIR,
+    '/opt/homebrew/share/whisper-cpp/models',
+    '/usr/local/share/whisper-cpp/models',
+    '/opt/homebrew/opt/whisper-cpp/share/whisper-cpp/models',
   ];
-  for (const p of candidates) {
-    if (await exists(p)) { cache.model = p; return p; }
+
+  for (const modelName of modelsToTry) {
+    for (const d of dirs) {
+      const p = join(d, modelName);
+      if (await exists(p)) {
+        if (!preferEnOnly) cache.model = p;
+        return p;
+      }
+    }
   }
-  cache.model = false;
+
+  if (!preferEnOnly) cache.model = false;
   return false;
 }
 
@@ -193,7 +216,7 @@ export async function transcribe(audioBuffer, {
     throw err;
   }
 
-  // Auto-fetch the model on first use if it's not present
+  // Auto-fetch the multilingual model on first use if it's not present
   if (!st.model) {
     try {
       await ensureModel();
@@ -204,7 +227,12 @@ export async function transcribe(audioBuffer, {
     }
   }
 
-  const modelPath = cache.model || await findModel();
+  // Prefer the English-only model when the user specifically asked for
+  // English transcription — it's marginally more accurate for that case.
+  const preferEnOnly = language === 'en';
+  const modelPath = await findModel(preferEnOnly)
+    || cache.model
+    || await findModel();
   if (!modelPath) {
     const err = new Error('Model unavailable after download');
     err.code = 'MODEL_MISSING';

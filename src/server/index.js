@@ -26,6 +26,46 @@ export async function startServer(cfg) {
   const app = express();
   app.set('trust proxy', 'loopback, linklocal, uniquelocal');
   app.disable('x-powered-by');
+
+  // Security headers — applied to every response before any route.
+  // Notes on specific choices:
+  //   - Referrer-Policy no-referrer is critical: the login URL carries the
+  //     one-time JWT as a query string, and without this header the token
+  //     leaks via the Referer header on the first outbound fetch.
+  //   - Permissions-Policy allows microphone (needed for voice input) but
+  //     blocks every other powerful API by default.
+  //   - CSP uses 'unsafe-inline' for styles because the selection handles
+  //     and overlay positioning need dynamic inline style writes, and for
+  //     scripts because the index.html embeds a window.__TVOICE_VAPID_PUBLIC__
+  //     assignment. Tightened further than browser defaults regardless.
+  //   - frame-ancestors 'none' blocks embedding — tvoice should never live
+  //     inside an iframe on another origin.
+  const csp = [
+    "default-src 'self'",
+    "script-src 'self' 'unsafe-inline'",
+    "style-src 'self' 'unsafe-inline'",
+    "img-src 'self' data: blob:",
+    "font-src 'self' data:",
+    "connect-src 'self' ws: wss: blob:",
+    "media-src 'self' blob:",
+    "worker-src 'self' blob:",
+    "object-src 'none'",
+    "base-uri 'self'",
+    "form-action 'self'",
+    "frame-ancestors 'none'",
+    "upgrade-insecure-requests",
+  ].join('; ');
+  app.use((req, res, next) => {
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('X-Frame-Options', 'DENY');
+    res.setHeader('Referrer-Policy', 'no-referrer');
+    res.setHeader('Permissions-Policy', 'microphone=(self), camera=(), geolocation=(), payment=()');
+    res.setHeader('Cross-Origin-Opener-Policy', 'same-origin');
+    res.setHeader('X-Permitted-Cross-Domain-Policies', 'none');
+    res.setHeader('Content-Security-Policy', csp);
+    next();
+  });
+
   app.use(express.json({ limit: '256kb' }));
 
   // Session manager
