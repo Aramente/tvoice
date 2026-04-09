@@ -184,6 +184,12 @@
           <button id="history-show" class="btn btn-ghost">Show command history</button>
         </section>
         <section class="drawer-section">
+          <h3>Two-factor (TOTP)</h3>
+          <p class="muted small" id="totp-status">Checking…</p>
+          <button id="totp-enable-btn" class="btn hidden">Enable 2FA</button>
+          <button id="totp-disable-btn" class="btn btn-ghost hidden">Disable 2FA</button>
+        </section>
+        <section class="drawer-section">
           <h3>Session</h3>
           <button id="logout-btn" class="btn btn-ghost">Log out</button>
           <p class="muted small" id="version-info"></p>
@@ -232,6 +238,30 @@
         <div class="modal-actions">
           <button class="btn-ghost" id="close-all-sessions">Close all &amp; start fresh</button>
           <button class="btn-primary" id="new-session-btn">+ New terminal</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOTP enrollment modal — drawer opens it on "Enable 2FA". Shows
+         the QR code + secret + verification field. -->
+    <div class="modal hidden" id="totp-modal" aria-hidden="true">
+      <div class="modal-backdrop" data-modal-close></div>
+      <div class="modal-panel">
+        <header class="modal-header">
+          <h3 id="totp-modal-title">Enable two-factor</h3>
+          <button class="modal-close" data-modal-close aria-label="Close">×</button>
+        </header>
+        <div class="modal-body">
+          <p class="muted small" id="totp-modal-hint">Scan the QR with Google Authenticator, 1Password, Authy, or any TOTP app. Then enter the 6-digit code.</p>
+          <div class="totp-qr-wrap" id="totp-qr-wrap"></div>
+          <p class="muted small">Or type the secret manually:</p>
+          <pre class="code" id="totp-secret" style="font-size: 11px; word-break: break-all; white-space: normal;"></pre>
+          <input type="text" id="totp-code-input" class="totp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="8" placeholder="000000">
+          <p class="totp-error" id="totp-modal-error"></p>
+        </div>
+        <div class="modal-actions">
+          <button class="btn-ghost" data-modal-close>Cancel</button>
+          <button class="btn-primary" id="totp-modal-confirm">Confirm</button>
         </div>
       </div>
     </div>

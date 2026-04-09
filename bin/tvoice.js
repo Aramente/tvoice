@@ -25,6 +25,7 @@ program
   .option('-t, --tunnel <backend>', 'tunnel backend: cloudflare | tailscale | none (default: cloudflare)')
   .option('--no-tunnel', 'disable tunneling, serve on localhost only')
   .option('--allow-lan', 'allow binding to a non-loopback host (DANGEROUS: any device on your LAN can attempt to log in)')
+  .option('--reset-totp', 'disable 2FA from the host machine (recovery if the authenticator is lost)')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
@@ -103,6 +104,20 @@ function deploymentBanner(cfg, allowLan) {
 async function main() {
   refuseRoot();
   const cfg = await loadConfig();
+
+  // --reset-totp is a host-side recovery path for users who lost their
+  // authenticator. The user already has filesystem access to this Mac,
+  // so requiring a TOTP code here would be circular.
+  if (opts.resetTotp) {
+    const { saveConfig } = await import('../src/server/config.js');
+    cfg.totpEnabled = false;
+    cfg.totpSecret = null;
+    cfg.totpPending = null;
+    await saveConfig(cfg);
+    console.log(chalk.green('  ✓ 2FA has been disabled on this host.'));
+    console.log(chalk.gray('  You can re-enable it from the PWA drawer after logging in.'));
+    process.exit(0);
+  }
 
   // CLI flags override the in-memory config for this run only. We deliberately
   // do NOT persist them — the config file is for generated secrets and

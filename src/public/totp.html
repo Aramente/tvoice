@@ -1,0 +1,104 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0A0A0A">
+  <meta name="color-scheme" content="dark">
+  <title>Tvoice — 2FA</title>
+  <link rel="icon" type="image/svg+xml" href="/icons/icon.svg">
+  <link rel="stylesheet" href="/css/tvoice.css">
+  <style>
+    .totp-card { max-width: 360px; width: 100%; padding: 28px 24px; border: 1px solid var(--border); border-radius: 12px; background: var(--bg-elev); text-align: center; }
+    .totp-card h1 { margin: 0 0 6px; font-size: 22px; color: var(--fg-bright); letter-spacing: 0.02em; }
+    .totp-card p { margin: 4px 0 18px; color: var(--fg-dim); font-size: 13px; }
+    .totp-code {
+      width: 100%;
+      padding: 14px 16px;
+      font-family: var(--font-family);
+      font-size: 28px;
+      font-weight: 700;
+      letter-spacing: 0.4em;
+      text-align: center;
+      background: var(--bg);
+      color: var(--fg-bright);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      caret-color: var(--c-cyan);
+    }
+    .totp-code:focus { outline: none; border-color: var(--c-cyan); }
+    .totp-submit {
+      margin-top: 14px;
+      width: 100%;
+      padding: 12px;
+      background: var(--c-cyan);
+      border: 0;
+      border-radius: 10px;
+      color: #000;
+      font-weight: 700;
+      font-size: 15px;
+      cursor: pointer;
+      min-height: 48px;
+    }
+    .totp-submit:disabled { opacity: 0.4; cursor: not-allowed; }
+    .totp-error { min-height: 18px; margin-top: 10px; color: var(--c-red); font-size: 12px; }
+  </style>
+</head>
+<body class="tvoice-body center">
+  <div class="totp-card">
+    <h1>Two-factor</h1>
+    <p>Enter the 6-digit code from your authenticator app.</p>
+    <input id="code" class="totp-code" inputmode="numeric" autocomplete="one-time-code" pattern="[0-9]*" maxlength="8" autofocus>
+    <button id="submit" class="totp-submit">Verify</button>
+    <div id="error" class="totp-error"></div>
+  </div>
+  <script>
+    const codeEl = document.getElementById('code');
+    const btn = document.getElementById('submit');
+    const err = document.getElementById('error');
+
+    async function verify() {
+      err.textContent = '';
+      const code = codeEl.value.replace(/\s|-/g, '');
+      if (!/^\d{6,8}$/.test(code)) {
+        err.textContent = 'Enter 6–8 digits';
+        return;
+      }
+      btn.disabled = true;
+      try {
+        const res = await fetch('/api/totp/verify', {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ code }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          location.href = data.redirect || '/';
+          return;
+        }
+        if (res.status === 429) {
+          err.textContent = 'Too many attempts — wait a few minutes';
+        } else {
+          const body = await res.json().catch(() => ({}));
+          err.textContent = body.error || ('Error ' + res.status);
+        }
+      } catch (e) {
+        err.textContent = e.message || 'network error';
+      } finally {
+        btn.disabled = false;
+        codeEl.focus();
+        codeEl.select();
+      }
+    }
+
+    btn.addEventListener('click', verify);
+    codeEl.addEventListener('keydown', (e) => { if (e.key === 'Enter') verify(); });
+    // Autosubmit as soon as the user enters 6 digits
+    codeEl.addEventListener('input', () => {
+      const v = codeEl.value.replace(/\s|-/g, '');
+      if (/^\d{6}$/.test(v)) verify();
+    });
+  </script>
+</body>
+</html>

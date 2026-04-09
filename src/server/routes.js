@@ -14,9 +14,13 @@ import {
   resetRateLimit,
   rateLimitCheck,
   rateLimitGc,
+  mintTotpPending,
+  verifyTotpPending,
 } from './auth.js';
 import { transcribe, status as whisperStatus } from './whisper.js';
 import { audit, auditFromReq } from './audit.js';
+import { generateSecret as totpGenerateSecret, buildOtpauthUri, buildQrSvg, verifyCode as totpVerifyCode } from './totp.js';
+import { saveConfig } from './config.js';
 
 const require = createRequire(import.meta.url);
 const __filename = fileURLToPath(import.meta.url);
@@ -50,18 +54,35 @@ export function buildRoutes({ cfg, sessions, push }) {
       return;
     }
     resetRateLimit(ip);
+
+    // Fork on TOTP: if enabled, the burn-token gets the user to the
+    // second-factor page only, not the full PWA. We set a short-lived
+    // pending cookie and redirect to /totp.html.
+    const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    if (cfg.totpEnabled && cfg.totpSecret) {
+      const pending = await mintTotpPending(cfg);
+      res.cookie('tvoice_totp_pending', pending, {
+        httpOnly: true,
+        sameSite: 'strict',
+        secure,
+        maxAge: 5 * 60 * 1000,
+        path: '/',
+      });
+      auditFromReq('login.totp_required', req);
+      res.redirect('/totp.html');
+      return;
+    }
+
     const access = await issueAccessToken(cfg);
     const cookieMaxAgeMs = (cfg.cookieTtlMin || 7 * 24 * 60) * 60 * 1000;
     res.cookie('tvoice_auth', access, {
       httpOnly: true,
       sameSite: 'strict',
-      secure: req.secure || req.headers['x-forwarded-proto'] === 'https',
+      secure,
       maxAge: cookieMaxAgeMs,
       path: '/',
     });
     auditFromReq('login.success', req, { cookieTtlMs: cookieMaxAgeMs });
-    // Notify any subscribed devices that a new login happened — quick way
-    // to notice unauthorised access without having to grep the audit log.
     push.notifyAll({
       title: 'Tvoice: new login',
       body: `New session from ${ip}`,
@@ -144,6 +165,112 @@ export function buildRoutes({ cfg, sessions, push }) {
     res.json(r);
   });
 
+  // ---------- TOTP second factor ----------
+  //
+  // Status is authenticated (you need a cookie to check whether 2FA is
+  // enabled). Setup / confirm / disable all require a live cookie.
+  // Verify is the ONLY TOTP endpoint that accepts the totp_pending cookie
+  // instead of the real auth cookie — that's how you upgrade a pending
+  // session into a real one.
+
+  router.get('/api/totp/status', auth, (_req, res) => {
+    res.json({
+      enabled: !!cfg.totpEnabled,
+      pending: !!cfg.totpPending,
+    });
+  });
+
+  router.post('/api/totp/setup', auth, async (req, res) => {
+    // Generate a fresh secret and stash it as pending. Return the
+    // otpauth URI + an inline SVG QR so the client can render it
+    // without any extra JS libraries.
+    const secret = totpGenerateSecret();
+    cfg.totpPending = secret;
+    await saveConfig(cfg);
+    const uri = buildOtpauthUri({ secret, account: 'tvoice', issuer: 'Tvoice' });
+    const svg = await buildQrSvg(uri);
+    auditFromReq('totp.setup_started', req);
+    res.json({ secret, uri, svg });
+  });
+
+  router.post('/api/totp/confirm', auth, async (req, res) => {
+    const { code } = req.body || {};
+    if (!cfg.totpPending) return res.status(400).json({ error: 'no pending secret — call /api/totp/setup first' });
+    if (!totpVerifyCode(cfg.totpPending, code)) {
+      auditFromReq('totp.confirm_failed', req);
+      return res.status(401).json({ error: 'code does not match' });
+    }
+    cfg.totpSecret = cfg.totpPending;
+    cfg.totpEnabled = true;
+    cfg.totpPending = null;
+    await saveConfig(cfg);
+    auditFromReq('totp.enabled', req);
+    res.json({ ok: true, enabled: true });
+  });
+
+  router.post('/api/totp/verify', async (req, res) => {
+    // Called from /totp.html with the 6-digit code. Uses the PENDING
+    // cookie, not the auth cookie, because the user doesn't have an
+    // auth cookie yet.
+    const ip = req.ip || req.socket.remoteAddress || 'unknown';
+    rateLimitGc();
+    const rl = rateLimitCheck('totp_verify', ip, { max: 10, windowMs: 5 * 60_000 });
+    if (!rl.ok) {
+      auditFromReq('totp.verify_rate_limited', req);
+      res.setHeader('Retry-After', Math.ceil(rl.retryMs / 1000));
+      return res.status(429).json({ error: 'too many attempts' });
+    }
+
+    const cookies = parseCookies(req.headers.cookie || '');
+    const pending = await verifyTotpPending(cfg, cookies.tvoice_totp_pending);
+    if (!pending) {
+      auditFromReq('totp.verify_no_pending', req);
+      return res.status(401).json({ error: 'pending session expired — re-scan QR from CLI' });
+    }
+
+    const { code } = req.body || {};
+    if (!cfg.totpEnabled || !cfg.totpSecret || !totpVerifyCode(cfg.totpSecret, code)) {
+      auditFromReq('totp.verify_failed', req);
+      return res.status(401).json({ error: 'code does not match' });
+    }
+
+    const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
+    const access = await issueAccessToken(cfg);
+    const cookieMaxAgeMs = (cfg.cookieTtlMin || 7 * 24 * 60) * 60 * 1000;
+    res.cookie('tvoice_auth', access, {
+      httpOnly: true,
+      sameSite: 'strict',
+      secure,
+      maxAge: cookieMaxAgeMs,
+      path: '/',
+    });
+    res.clearCookie('tvoice_totp_pending', { path: '/' });
+    auditFromReq('totp.verify_success', req);
+    push.notifyAll({
+      title: 'Tvoice: new login',
+      body: `New session from ${ip} (2FA)`,
+      tag: 'tvoice-login',
+    }).catch(() => {});
+    res.json({ ok: true, redirect: '/' });
+  });
+
+  router.post('/api/totp/disable', auth, async (req, res) => {
+    // Require a fresh code so an attacker who stole the cookie can't
+    // silently turn off 2FA on their way out.
+    const { code } = req.body || {};
+    if (!cfg.totpEnabled) return res.status(400).json({ error: 'not enabled' });
+    if (!totpVerifyCode(cfg.totpSecret, code)) {
+      auditFromReq('totp.disable_failed', req);
+      return res.status(401).json({ error: 'code does not match' });
+    }
+    cfg.totpEnabled = false;
+    cfg.totpSecret = null;
+    cfg.totpPending = null;
+    await saveConfig(cfg);
+    auditFromReq('totp.disabled', req);
+    res.json({ ok: true, enabled: false });
+  });
+
   // ---------- Speech-to-text via local Whisper ----------
 
   router.get('/api/voice/status', auth, async (_req, res) => {
@@ -223,6 +350,17 @@ export function buildRoutes({ cfg, sessions, push }) {
   });
 
   return router;
+}
+
+function parseCookies(header) {
+  const out = {};
+  if (!header) return out;
+  for (const part of header.split(';')) {
+    const [k, ...rest] = part.trim().split('=');
+    if (!k) continue;
+    out[k] = decodeURIComponent(rest.join('='));
+  }
+  return out;
 }
 
 function extForContentType(ct) {

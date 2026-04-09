@@ -106,6 +106,14 @@ export async function startServer(cfg) {
     } catch (err) { next(err); }
   });
 
+  // TOTP entry page — second factor when 2FA is enabled. Public HTML,
+  // the pending cookie gates the verify endpoint.
+  app.get('/totp.html', async (_req, res, next) => {
+    try {
+      res.sendFile(join(PUBLIC_DIR, 'totp.html'));
+    } catch (err) { next(err); }
+  });
+
   // Static assets from public/
   app.use('/static', express.static(PUBLIC_DIR, { fallthrough: true }));
   app.use('/icons', express.static(join(PUBLIC_DIR, 'icons'), { fallthrough: true }));

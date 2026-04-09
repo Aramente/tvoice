@@ -46,6 +46,29 @@ export async function issueAccessToken(cfg) {
   );
 }
 
+// Short-lived "totp pending" token issued AFTER the burn-token has been
+// consumed but BEFORE the user has presented their second factor. Lives
+// in the tvoice_totp_pending cookie. 5-minute TTL — enough to type a
+// 6-digit code, not enough for a brute force.
+export async function mintTotpPending(cfg, { ttl = 300 } = {}) {
+  return jwt.sign(
+    { t: 'totp_pending', nonce: randomBytes(8).toString('hex') },
+    cfg.jwtSecret,
+    { expiresIn: ttl }
+  );
+}
+
+export async function verifyTotpPending(cfg, token) {
+  if (!token || typeof token !== 'string') return null;
+  try {
+    const decoded = jwt.verify(token, cfg.jwtSecret);
+    if (decoded.t !== 'totp_pending') return null;
+    return decoded;
+  } catch {
+    return null;
+  }
+}
+
 export async function verifyAccessToken(cfg, token) {
   if (!token || typeof token !== 'string') return null;
   try {

@@ -611,6 +611,34 @@ pre.code { display: block; white-space: pre-wrap; }
 }
 .session-row .session-delete:hover { color: var(--c-red); border-color: var(--c-red); }
 
+.totp-qr-wrap {
+  margin: 12px 0;
+  padding: 12px;
+  background: #fff;
+  border-radius: 8px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  min-height: 200px;
+}
+.totp-qr-wrap svg { max-width: 100%; height: auto; display: block; }
+.totp-code {
+  width: 100%;
+  padding: 12px 14px;
+  font-family: var(--font-family);
+  font-size: 22px;
+  font-weight: 700;
+  letter-spacing: 0.35em;
+  text-align: center;
+  background: var(--bg);
+  color: var(--fg-bright);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  margin-top: 10px;
+}
+.totp-code:focus { outline: none; border-color: var(--c-cyan); }
+.totp-error { min-height: 18px; margin-top: 8px; color: var(--c-red); font-size: 12px; }
+
 .paste-nl-row {
   display: flex;
   align-items: center;

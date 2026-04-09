@@ -404,6 +404,9 @@ function setupDrawer() {
   // voice will work BEFORE they tap the mic.
   refreshVoiceEngineStatus();
 
+  // TOTP two-factor wiring
+  setupTotpDrawer();
+
   // Logout
   el('logout-btn')?.addEventListener('click', async () => {
     try {
@@ -617,6 +620,124 @@ function setupVoiceFlow() {
     if (headerBtn) headerBtn.classList.toggle('recording', !overlay.classList.contains('hidden'));
   });
   if (overlay && headerBtn) observer.observe(overlay, { attributes: true, attributeFilter: ['class'] });
+}
+
+// ---------- TOTP two-factor ----------
+
+function setupTotpDrawer() {
+  const statusEl = el('totp-status');
+  const enableBtn = el('totp-enable-btn');
+  const disableBtn = el('totp-disable-btn');
+  const modal = el('totp-modal');
+  const qrWrap = el('totp-qr-wrap');
+  const secretEl = el('totp-secret');
+  const codeInput = el('totp-code-input');
+  const confirmBtn = el('totp-modal-confirm');
+  const errorEl = el('totp-modal-error');
+  const titleEl = el('totp-modal-title');
+  const hintEl = el('totp-modal-hint');
+
+  let mode = 'enable';  // 'enable' | 'disable'
+
+  const refresh = async () => {
+    try {
+      const res = await fetch('/api/totp/status', { credentials: 'same-origin' });
+      if (!res.ok) throw new Error('status ' + res.status);
+      const st = await res.json();
+      if (st.enabled) {
+        statusEl.textContent = '2FA is ENABLED — your logins require an authenticator code.';
+        statusEl.style.color = 'var(--c-green)';
+        enableBtn.classList.add('hidden');
+        disableBtn.classList.remove('hidden');
+      } else {
+        statusEl.textContent = '2FA is OFF — anyone with a login URL can sign in.';
+        statusEl.style.color = 'var(--fg-dim)';
+        enableBtn.classList.remove('hidden');
+        disableBtn.classList.add('hidden');
+      }
+    } catch (err) {
+      statusEl.textContent = 'Status unavailable';
+      statusEl.style.color = 'var(--fg-dim)';
+    }
+  };
+
+  const openEnable = async () => {
+    mode = 'enable';
+    titleEl.textContent = 'Enable two-factor';
+    hintEl.textContent = 'Scan the QR with your authenticator app, then enter the 6-digit code.';
+    errorEl.textContent = '';
+    codeInput.value = '';
+    qrWrap.innerHTML = '<p class="muted small">Loading…</p>';
+    secretEl.textContent = '';
+    modal.classList.remove('hidden');
+    try {
+      const res = await fetch('/api/totp/setup', { method: 'POST', credentials: 'same-origin' });
+      if (!res.ok) throw new Error(await res.text());
+      const data = await res.json();
+      qrWrap.innerHTML = data.svg || '';
+      secretEl.textContent = data.secret;
+    } catch (err) {
+      errorEl.textContent = 'Setup failed: ' + err.message;
+    }
+    setTimeout(() => codeInput.focus(), 200);
+  };
+
+  const openDisable = () => {
+    mode = 'disable';
+    titleEl.textContent = 'Disable two-factor';
+    hintEl.textContent = 'Enter a current 6-digit code from your authenticator to turn off 2FA.';
+    errorEl.textContent = '';
+    codeInput.value = '';
+    qrWrap.innerHTML = '';
+    secretEl.textContent = '';
+    modal.classList.remove('hidden');
+    setTimeout(() => codeInput.focus(), 200);
+  };
+
+  const close = () => {
+    modal.classList.add('hidden');
+    errorEl.textContent = '';
+    codeInput.value = '';
+  };
+
+  const submit = async () => {
+    const code = (codeInput.value || '').replace(/\s|-/g, '');
+    if (!/^\d{6,8}$/.test(code)) {
+      errorEl.textContent = 'Enter 6–8 digits';
+      return;
+    }
+    confirmBtn.disabled = true;
+    try {
+      const path = mode === 'enable' ? '/api/totp/confirm' : '/api/totp/disable';
+      const res = await fetch(path, {
+        method: 'POST',
+        credentials: 'same-origin',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ code }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.error || ('Error ' + res.status));
+      }
+      toast(mode === 'enable' ? '2FA enabled' : '2FA disabled', 'success');
+      close();
+      refresh();
+    } catch (err) {
+      errorEl.textContent = err.message || 'failed';
+    } finally {
+      confirmBtn.disabled = false;
+    }
+  };
+
+  enableBtn?.addEventListener('click', openEnable);
+  disableBtn?.addEventListener('click', openDisable);
+  confirmBtn?.addEventListener('click', submit);
+  codeInput?.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  document.querySelectorAll('#totp-modal [data-modal-close]').forEach((n) => {
+    n.addEventListener('click', close);
+  });
+
+  refresh();
 }
 
 async function refreshVoiceEngineStatus() {

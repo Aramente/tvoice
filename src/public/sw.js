@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v11-audit-hardening';
+const VERSION = 'tvoice-v12-totp-2fa';
 const SHELL = [
   '/',
   '/css/tvoice.css',
