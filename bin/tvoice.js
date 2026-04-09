@@ -28,6 +28,7 @@ program
   .option('--reset-totp', 'disable 2FA from the host machine (recovery if the authenticator is lost)')
   .option('--rotate-secret', 'rotate the JWT signing secret (existing cookies remain valid until they expire)')
   .option('--setup', 'first-time setup — generates config, prints a permanent login URL, and exits')
+  .option('--mirror', 'auto-attach to tmux sessions created from your phone')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
@@ -213,6 +214,57 @@ async function main() {
     process.on('SIGINT', () => handleShutdown('SIGINT'));
     process.on('SIGTERM', () => handleShutdown('SIGTERM'));
     return;
+  }
+
+  // --mirror: watch for tvoice tmux sessions and auto-attach. When the
+  // phone creates a new tab, this Mac terminal instantly mirrors it.
+  // When the tmux session detaches or exits, go back to watching.
+  if (opts.mirror) {
+    const { execFile: ef } = await import('node:child_process');
+    const { promisify: p } = await import('node:util');
+    const { spawn: spawnProc } = await import('node:child_process');
+    const efP = p(ef);
+    const prefix = cfg.tmuxPrefix || 'tvoice';
+
+    console.log('');
+    console.log(chalk.cyan.bold('  Tvoice mirror mode'));
+    console.log(chalk.gray(`  Watching for tmux sessions starting with "${prefix}-"...`));
+    console.log(chalk.gray('  Create a tab on your phone — this terminal will follow it.'));
+    console.log(chalk.gray('  Ctrl+C to stop.'));
+    console.log('');
+
+    const seen = new Set();
+    const poll = async () => {
+      try {
+        const { stdout } = await efP('tmux', ['ls', '-F', '#{session_name}']);
+        const sessions = stdout.trim().split('\n').filter((s) => s.startsWith(prefix + '-'));
+        for (const name of sessions) {
+          if (!seen.has(name)) {
+            seen.add(name);
+            console.log(chalk.green(`  → Attaching to ${name}`));
+            console.log(chalk.gray('    (detach with Ctrl+B then D to return to mirror mode)'));
+            console.log('');
+            // Attach — this takes over the terminal until detach/exit
+            const child = spawnProc('tmux', ['attach', '-t', name], {
+              stdio: 'inherit',
+            });
+            await new Promise((resolve) => child.on('exit', resolve));
+            console.log('');
+            console.log(chalk.gray(`  Detached from ${name}. Watching for new sessions...`));
+            console.log('');
+          }
+        }
+      } catch {
+        // tmux not running or no sessions — that's fine, keep polling
+      }
+    };
+
+    const interval = setInterval(poll, 1500);
+    poll();
+    process.on('SIGINT', () => { clearInterval(interval); process.exit(0); });
+    process.on('SIGTERM', () => { clearInterval(interval); process.exit(0); });
+    // Keep the process alive
+    await new Promise(() => {});
   }
 
   // --rotate-secret generates a new JWT signing secret. The old secret
