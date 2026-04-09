@@ -57,6 +57,25 @@ async function main() {
         app.toolbar?.setAIAwaiting(false);
       }
     },
+    onSessionSync: (remoteSessions) => {
+      // Another device created or closed a session. Add tabs we don't
+      // have yet; remove tabs whose sessions no longer exist.
+      const localIds = new Set(app.tabManager.tabs.map((t) => t.session.sessionId).filter(Boolean));
+      const remoteIds = new Set(remoteSessions.map((s) => s.id));
+      for (const rs of remoteSessions) {
+        if (!localIds.has(rs.id)) {
+          app.tabManager.newTab({ sessionId: rs.id });
+          toast(`Session "${rs.title || rs.id}" opened from another device`);
+        }
+      }
+      // Don't auto-close tabs — the user might still want to see them
+      // even if the remote session is gone. Just toast.
+      for (const t of app.tabManager.tabs) {
+        if (t.session.sessionId && !remoteIds.has(t.session.sessionId)) {
+          toast(`Session "${t.session.titleText || t.session.sessionId}" closed from another device`);
+        }
+      }
+    },
     onAIStateChange: (_tab, state) => {
       app.toolbar?.setAIActive(state.detected);
       app.toolbar?.setAIAwaiting(state.awaiting);
@@ -515,17 +534,48 @@ function setupVoiceFlow() {
   const hintEl = el('voice-hint');
   const cancelBtn = el('voice-cancel');
 
-  const showOverlay = () => {
+  const recordPhase = el('voice-phase-record');
+  const previewPhase = el('voice-phase-preview');
+  const resultEl = el('voice-result');
+  const sendBtn = el('voice-send');
+  const retryBtn = el('voice-retry');
+
+  const showRecordPhase = () => {
     overlay.classList.remove('hidden', 'transcribing', 'error');
     overlay.setAttribute('aria-hidden', 'false');
+    recordPhase.classList.remove('hidden');
+    previewPhase.classList.add('hidden');
     statusEl.textContent = 'Listening…';
     hintEl.textContent = "Speak — I'll stop when you pause";
+  };
+  const showPreviewPhase = (text) => {
+    recordPhase.classList.add('hidden');
+    previewPhase.classList.remove('hidden');
+    overlay.classList.remove('transcribing', 'error');
+    resultEl.value = text;
+    // Auto-resize textarea to fit content
+    resultEl.style.height = 'auto';
+    resultEl.style.height = Math.min(200, resultEl.scrollHeight) + 'px';
+    setTimeout(() => { resultEl.focus(); resultEl.setSelectionRange(0, resultEl.value.length); }, 100);
   };
   const hideOverlay = () => {
     overlay.classList.add('hidden');
     overlay.setAttribute('aria-hidden', 'true');
     overlay.classList.remove('transcribing', 'error');
+    recordPhase.classList.remove('hidden');
+    previewPhase.classList.add('hidden');
     if (ringEl) ringEl.style.transform = '';
+    // Refocus the terminal
+    const s = app.tabManager.activeSession();
+    if (s) s.focus();
+  };
+  const sendVoiceResult = () => {
+    const text = (resultEl.value || '').trim();
+    if (!text) { hideOverlay(); return; }
+    const s = app.tabManager.activeSession();
+    if (s) s.sendInput(text);
+    toast(`Sent: ${text.length > 50 ? text.slice(0, 50) + '…' : text}`, 'success');
+    hideOverlay();
   };
 
   const startRecording = async () => {
@@ -533,7 +583,7 @@ function setupVoiceFlow() {
       app._voiceRecorder.stop();
       return;
     }
-    showOverlay();
+    showRecordPhase();
     const rec = new VoiceRecorder({
       onStart: () => { /* overlay already visible */ },
       onLevel: (rms) => {
@@ -583,10 +633,8 @@ function setupVoiceFlow() {
             setTimeout(hideOverlay, 1800);
             return;
           }
-          const s = app.tabManager.activeSession();
-          if (s) s.sendInput(text);
-          toast(`Heard: ${text.length > 50 ? text.slice(0, 50) + '…' : text}`, 'success');
-          hideOverlay();
+          // Show the preview — Kevin reads it, edits if needed, sends with Enter.
+          showPreviewPhase(text);
         } catch (err) {
           overlay.classList.add('error');
           statusEl.textContent = 'Transcription failed';
@@ -609,9 +657,24 @@ function setupVoiceFlow() {
   el('voice-btn')?.addEventListener('click', startRecording);
   el('voice-header-btn')?.addEventListener('click', startRecording);
   cancelBtn?.addEventListener('click', cancelRecording);
-  // Tap anywhere in the backdrop (not the panel) to cancel
   overlay?.addEventListener('click', (e) => {
     if (e.target === overlay) cancelRecording();
+  });
+
+  // Preview phase: Send, Retry, Enter, Escape
+  sendBtn?.addEventListener('click', sendVoiceResult);
+  retryBtn?.addEventListener('click', () => {
+    previewPhase.classList.add('hidden');
+    startRecording();
+  });
+  resultEl?.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter' && !e.shiftKey) {
+      e.preventDefault();
+      sendVoiceResult();
+    }
+    if (e.key === 'Escape') {
+      hideOverlay();
+    }
   });
 
   // Visual pulse on the header mic while recording

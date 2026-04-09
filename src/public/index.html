@@ -213,7 +213,8 @@
          pulsing ring that scales with audio input level. Tap anywhere to
          cancel. Auto-stops on silence. -->
     <div class="voice-overlay hidden" id="voice-overlay" aria-hidden="true">
-      <div class="voice-panel">
+      <!-- Phase 1: recording (pulsing ring) -->
+      <div class="voice-panel" id="voice-phase-record">
         <div class="voice-pulse">
           <div class="voice-ring" id="voice-ring"></div>
           <div class="voice-dot"></div>
@@ -221,6 +222,15 @@
         <div class="voice-status" id="voice-status">Listening…</div>
         <div class="voice-hint" id="voice-hint">Speak — I'll stop when you pause</div>
         <button class="voice-cancel" id="voice-cancel">Cancel</button>
+      </div>
+      <!-- Phase 2: preview (editable text, send on Enter) -->
+      <div class="voice-panel hidden" id="voice-phase-preview">
+        <textarea class="voice-result" id="voice-result" rows="3" autocapitalize="off" autocorrect="off" spellcheck="false"></textarea>
+        <div class="voice-preview-actions">
+          <button class="voice-retry" id="voice-retry">Retry</button>
+          <button class="voice-send" id="voice-send">Send</button>
+        </div>
+        <div class="voice-hint">Edit if needed. Enter to send. Esc to cancel.</div>
       </div>
     </div>
 

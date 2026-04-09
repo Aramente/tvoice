@@ -6,11 +6,12 @@ import { TerminalSession } from './terminal.js';
 import { AIRenderer } from './ai-render.js';
 
 export class TabManager {
-  constructor({ host, tabsEl, onActiveChange, onAIStateChange, historyObserver, settings }) {
+  constructor({ host, tabsEl, onActiveChange, onAIStateChange, onSessionSync, historyObserver, settings }) {
     this.host = host;
     this.tabsEl = tabsEl;
     this.onActiveChange = onActiveChange || (() => {});
     this.onAIStateChange = onAIStateChange || (() => {});
+    this.onSessionSync = onSessionSync || (() => {});
     this.historyObserver = historyObserver || null;
     this.settings = settings;
     this.tabs = [];  // { id, session, ai, containerEl, tabEl }
@@ -71,6 +72,12 @@ export class TabManager {
       },
       onInput: (input) => {
         if (this.historyObserver) this.historyObserver.observe(input);
+      },
+      onSessionSync: (sessions) => {
+        // Bubble up — let app.js handle the sync logic (add missing
+        // tabs, remove closed ones). Only the first session to receive
+        // the broadcast triggers the sync.
+        this.onSessionSync(sessions);
       },
       onState: (_state) => { /* delegated to conn-status in app.js */ },
     });

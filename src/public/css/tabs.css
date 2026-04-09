@@ -10,6 +10,11 @@
   border-bottom: 1px solid var(--border);
   flex: 0 0 var(--tab-h);
   z-index: 20;
+  /* Belt-and-braces: sticky + fixed ensures the header never scrolls away,
+     even on iOS Safari where position:fixed inside a flex container can
+     lose its stickiness when the virtual keyboard resizes the viewport. */
+  position: sticky;
+  top: 0;
 }
 
 .tabs {

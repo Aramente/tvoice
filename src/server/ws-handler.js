@@ -25,6 +25,19 @@ import { verifyAccessToken, getAccessTokenFromRequest } from './auth.js';
 export function attachWebSocket({ httpServer, cfg, sessions }) {
   const wss = new WebSocketServer({ noServer: true });
 
+  // Broadcast a message to ALL connected WebSocket clients. Used to sync
+  // tab lists across devices — when one client creates or closes a session,
+  // every other client gets a notification so it can update its tab bar.
+  function broadcast(msg, exclude = null) {
+    const payload = JSON.stringify(msg);
+    for (const client of wss.clients) {
+      if (client !== exclude && client.readyState === 1) {
+        try { client.send(payload); } catch { /* ignore */ }
+      }
+    }
+  }
+  sessions._broadcast = broadcast;  // expose for session-manager hooks
+
   httpServer.on('upgrade', async (req, socket, head) => {
     if (!req.url?.startsWith('/ws')) {
       socket.destroy();
@@ -111,9 +124,12 @@ function handleConnection(ws, { cfg, sessions }) {
           });
           attach(s);
           send(ws, { type: 'created', session: s.describe() });
-          // Flush any early buffered output
           const snap = s.buffer.snapshot();
           if (snap) send(ws, { type: 'data', data: snap });
+          // Notify all OTHER clients so they can add the tab to their bar
+          if (sessions._broadcast) {
+            sessions._broadcast({ type: 'session.sync', sessions: sessions.listSessions() }, ws);
+          }
           break;
         }
 
@@ -163,6 +179,9 @@ function handleConnection(ws, { cfg, sessions }) {
             await sessions.closeSession(id);
           }
           send(ws, { type: 'closed' });
+          if (sessions._broadcast) {
+            sessions._broadcast({ type: 'session.sync', sessions: sessions.listSessions() }, ws);
+          }
           break;
         }
 

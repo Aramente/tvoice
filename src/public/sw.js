@@ -5,7 +5,7 @@
 //   - Cache-first for /vendor/ assets (xterm is big)
 //   - Always network-only for /api/ and /ws
 
-const VERSION = 'tvoice-v13-device-bind';
+const VERSION = 'tvoice-v14-voice-preview';
 const SHELL = [
   '/',
   '/css/tvoice.css',

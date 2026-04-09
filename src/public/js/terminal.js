@@ -11,7 +11,7 @@ const SerializeAddon = window.SerializeAddon?.SerializeAddon;
 const WebLinksAddon = window.WebLinksAddon?.WebLinksAddon;
 
 export class TerminalSession {
-  constructor({ container, sessionId = null, onState, onAIChange, onTitle, onData, onInput, fontSize = 14, theme = 'oled' }) {
+  constructor({ container, sessionId = null, onState, onAIChange, onTitle, onData, onInput, onSessionSync, fontSize = 14, theme = 'oled' }) {
     this.container = container;
     this.sessionId = sessionId;
     this.onState = onState || (() => {});
@@ -19,6 +19,7 @@ export class TerminalSession {
     this.onTitle = onTitle || (() => {});
     this.onData = onData || (() => {});
     this.onInput = onInput || (() => {});
+    this.onSessionSync = onSessionSync || null;
     this.term = null;
     this.fit = null;
     this.serialize = null;
@@ -134,6 +135,13 @@ export class TerminalSession {
         break;
       case 'error':
         this.term.writeln(`\r\n\x1b[31m[server error] ${msg.message}\x1b[0m`);
+        break;
+      case 'session.sync':
+        // Another device created or closed a session — bubble up so
+        // the TabManager can sync its tab bar.
+        if (typeof this.onSessionSync === 'function') {
+          try { this.onSessionSync(msg.sessions); } catch { /* ignore */ }
+        }
         break;
     }
   }
