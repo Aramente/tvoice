@@ -1,0 +1,114 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#0A0A0A">
+<meta name="description" content="Tvoice — mobile-first terminal for steering AI coding agents from your phone. One command, a QR code, and your phone becomes the command center for Claude Code.">
+<title>Tvoice — terminal on your phone, AI on your Mac</title>
+<style>
+:root { --bg: #0A0A0A; --fg: #E0E0E0; --dim: #9a9a9a; --cyan: #22D3EE; --mag: #C084FC; --green: #4ADE80; --border: #2a2a2a; }
+* { box-sizing: border-box; margin: 0; padding: 0; }
+html { background: var(--bg); color: var(--fg); font-family: system-ui, -apple-system, sans-serif; line-height: 1.6; -webkit-font-smoothing: antialiased; scroll-behavior: smooth; }
+body { max-width: 720px; margin: 0 auto; padding: 48px 24px 80px; }
+a { color: var(--cyan); text-decoration: none; }
+a:hover { text-decoration: underline; }
+code, pre { font-family: 'JetBrains Mono', 'Fira Code', 'SF Mono', monospace; }
+code { background: #141414; border: 1px solid var(--border); border-radius: 4px; padding: 2px 6px; font-size: 0.9em; }
+pre { background: #141414; border: 1px solid var(--border); border-radius: 8px; padding: 16px 20px; overflow-x: auto; font-size: 14px; line-height: 1.5; }
+h1 { font-size: 2.4em; font-weight: 800; letter-spacing: -0.02em; margin-bottom: 12px; }
+h1 span { color: var(--cyan); }
+.tag { display: inline-block; font-size: 12px; font-weight: 600; padding: 3px 10px; border-radius: 20px; border: 1px solid var(--border); color: var(--dim); margin-right: 6px; }
+.lead { font-size: 1.15em; color: var(--dim); margin: 16px 0 32px; max-width: 560px; }
+.install { margin: 32px 0; }
+.install pre { font-size: 18px; color: var(--green); }
+.features { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 40px 0; }
+@media (max-width: 540px) { .features { grid-template-columns: 1fr; } }
+.feat { padding: 18px; border: 1px solid var(--border); border-radius: 10px; background: #0e0e0e; }
+.feat h3 { font-size: 15px; font-weight: 700; margin-bottom: 6px; color: var(--fg); }
+.feat p { font-size: 13px; color: var(--dim); line-height: 1.5; }
+.feat .icon { font-size: 22px; margin-bottom: 8px; }
+section { margin: 56px 0; }
+section h2 { font-size: 1.5em; font-weight: 700; margin-bottom: 16px; }
+section p, section li { color: var(--dim); font-size: 15px; line-height: 1.6; }
+section ul { padding-left: 20px; }
+section li { margin-bottom: 8px; }
+.arch { margin: 24px 0; }
+.arch pre { font-size: 12px; line-height: 1.4; color: var(--dim); }
+.cta { text-align: center; margin: 56px 0 32px; }
+.cta a { display: inline-block; padding: 14px 28px; background: var(--cyan); color: #000; font-weight: 700; font-size: 16px; border-radius: 10px; text-decoration: none; }
+.cta a:hover { opacity: 0.9; text-decoration: none; }
+footer { margin-top: 64px; padding-top: 24px; border-top: 1px solid var(--border); font-size: 12px; color: var(--dim); text-align: center; }
+</style>
+</head>
+<body>
+
+<header>
+  <span class="tag">alpha</span>
+  <span class="tag">self-hosted</span>
+  <span class="tag">open source</span>
+  <h1><span>T</span>voice</h1>
+  <p class="lead">Mobile-first terminal for steering AI coding agents from your phone. One command, a QR code, and your phone becomes the command center for Claude Code.</p>
+</header>
+
+<div class="install">
+  <pre>npx tvoice</pre>
+  <p style="margin-top: 8px; font-size: 13px; color: var(--dim);">Scan the QR on your phone. You're in.</p>
+</div>
+
+<div class="features">
+  <div class="feat"><div class="icon">*</div><h3>Special key toolbar</h3><p>ESC, TAB, CTRL, ALT, arrows — all 44px touch targets. Sticky modifiers. Swipe up for symbols. AI row auto-appears when Claude Code is detected.</p></div>
+  <div class="feat"><div class="icon">~</div><h3>tmux persistence</h3><p>Each tab is a tmux session. Disconnect, lock the screen, switch networks — reconnect and pick up where you left off.</p></div>
+  <div class="feat"><div class="icon">></div><h3>Local Whisper voice</h3><p>Tap mic, speak, text lands in your terminal. whisper.cpp runs on your Mac — audio never leaves the machine. Works inside iOS PWAs where Web Speech is blocked.</p></div>
+  <div class="feat"><div class="icon">#</div><h3>Zero-config tunnel</h3><p>Cloudflare Quick Tunnel or Tailscale Serve. One flag, auto-HTTPS, QR code in your terminal. No port forwarding, no DNS, no nginx.</p></div>
+  <div class="feat"><div class="icon">@</div><h3>iOS text selection</h3><p>Long-press a word, drag the handles to extend, tap Copy. Same gesture you use in Notes — adapted for a terminal canvas.</p></div>
+  <div class="feat"><div class="icon">!</div><h3>Push notifications</h3><p>Command done? Agent needs input? Get a push on your phone. Works on iOS 16.4+ after installing to the home screen.</p></div>
+  <div class="feat"><div class="icon">$</div><h3>2FA + audit log</h3><p>Optional TOTP second factor. Device-bound cookies. JWT rotation. Append-only JSONL audit log. Refuses to run as root. Security headers on every response.</p></div>
+  <div class="feat"><div class="icon">%</div><h3>OLED dark theme</h3><p>#0A0A0A background (no OLED smearing), #E0E0E0 text (no halation). 5 built-in themes + custom JSON import. Pinch to zoom.</p></div>
+</div>
+
+<section>
+  <h2>How it works</h2>
+  <pre class="arch">Phone (PWA)                         Mac (your laptop)
+  xterm.js                            Express + ws
+  + toolbar                           + node-pty -> tmux
+  + voice recorder     <-- wss -->    + whisper.cpp
+  + push client                       + JWT auth
+                                      + Cloudflare Tunnel / Tailscale</pre>
+  <p>Tvoice is <strong>self-hosted software</strong>, not a cloud service. You run it on your own Mac. Your phone connects to it. Your credentials (Claude, GitHub, SSH, AWS) stay on your machine — Tvoice is a pipe to your existing terminal, not a custodian of your secrets.</p>
+</section>
+
+<section>
+  <h2>Quick start</h2>
+  <pre>npx tvoice                       # Cloudflare tunnel (default)
+npx tvoice --tunnel tailscale    # private tailnet
+npx tvoice --no-tunnel           # localhost only</pre>
+  <p style="margin-top: 12px;">Requirements: <strong>Node 18+</strong>. Optional: <code>tmux</code> (session persistence), <code>cloudflared</code> or <code>tailscale</code> (remote access), <code>whisper-cpp</code> + <code>ffmpeg</code> (voice input).</p>
+  <pre style="margin-top: 12px;">brew install tmux cloudflared ffmpeg whisper-cpp</pre>
+</section>
+
+<section>
+  <h2>Security model</h2>
+  <p>Tvoice gives the authenticated user a <strong>live shell</strong> on the machine running the server. That is the maximum privilege a process can have on your account. Read <a href="https://github.com/Aramente/tvoice/blob/main/SECURITY.md">SECURITY.md</a> before deploying outside your own laptop.</p>
+  <ul>
+    <li>One-time login tokens (15 min, single use)</li>
+    <li>Device-bound JWT cookies with configurable TTL</li>
+    <li>Optional TOTP second factor</li>
+    <li>JWT secret rotation (<code>--rotate-secret</code>)</li>
+    <li>Per-IP rate limiting on login + transcribe</li>
+    <li>Append-only audit log</li>
+    <li>CSP, Referrer-Policy, X-Frame-Options on every response</li>
+    <li>Refuses to run as root or bind to 0.0.0.0 without <code>--allow-lan</code></li>
+  </ul>
+</section>
+
+<div class="cta">
+  <a href="https://github.com/Aramente/tvoice">View on GitHub</a>
+</div>
+
+<footer>
+  MIT License. Built by <a href="https://github.com/Aramente">Kevin Duchier</a>.
+</footer>
+
+</body>
+</html>
