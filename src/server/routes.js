@@ -16,6 +16,7 @@ import {
   rateLimitGc,
   mintTotpPending,
   verifyTotpPending,
+  deviceFingerprint,
 } from './auth.js';
 import { transcribe, status as whisperStatus } from './whisper.js';
 import { audit, auditFromReq } from './audit.js';
@@ -73,7 +74,8 @@ export function buildRoutes({ cfg, sessions, push }) {
       return;
     }
 
-    const access = await issueAccessToken(cfg);
+    const fp = deviceFingerprint(req);
+    const access = await issueAccessToken(cfg, { fp });
     const cookieMaxAgeMs = (cfg.cookieTtlMin || 7 * 24 * 60) * 60 * 1000;
     res.cookie('tvoice_auth', access, {
       httpOnly: true,
@@ -82,7 +84,7 @@ export function buildRoutes({ cfg, sessions, push }) {
       maxAge: cookieMaxAgeMs,
       path: '/',
     });
-    auditFromReq('login.success', req, { cookieTtlMs: cookieMaxAgeMs });
+    auditFromReq('login.success', req, { cookieTtlMs: cookieMaxAgeMs, fp });
     push.notifyAll({
       title: 'Tvoice: new login',
       body: `New session from ${ip}`,
@@ -235,7 +237,8 @@ export function buildRoutes({ cfg, sessions, push }) {
     }
 
     const secure = req.secure || req.headers['x-forwarded-proto'] === 'https';
-    const access = await issueAccessToken(cfg);
+    const fp = deviceFingerprint(req);
+    const access = await issueAccessToken(cfg, { fp });
     const cookieMaxAgeMs = (cfg.cookieTtlMin || 7 * 24 * 60) * 60 * 1000;
     res.cookie('tvoice_auth', access, {
       httpOnly: true,
@@ -245,7 +248,7 @@ export function buildRoutes({ cfg, sessions, push }) {
       path: '/',
     });
     res.clearCookie('tvoice_totp_pending', { path: '/' });
-    auditFromReq('totp.verify_success', req);
+    auditFromReq('totp.verify_success', req, { fp });
     push.notifyAll({
       title: 'Tvoice: new login',
       body: `New session from ${ip} (2FA)`,

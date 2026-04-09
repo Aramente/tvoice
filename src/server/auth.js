@@ -3,7 +3,7 @@
 // via the /login endpoint.
 
 import jwt from 'jsonwebtoken';
-import { randomBytes, timingSafeEqual } from 'node:crypto';
+import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 
 const usedLoginTokens = new Set();       // burn-after-use
 const loginTokenTTL = 15 * 60;           // 15 minutes
@@ -38,9 +38,18 @@ export async function consumeLoginToken(cfg, token) {
   return decoded;
 }
 
-export async function issueAccessToken(cfg) {
+// Device fingerprint: hash of User-Agent + Accept-Language. Catches the
+// common case of a cookie extracted via XSS and replayed from a different
+// browser.
+export function deviceFingerprint(req) {
+  const ua = (req?.headers?.['user-agent'] || '').slice(0, 500);
+  const lang = (req?.headers?.['accept-language'] || '').slice(0, 200);
+  return createHash('sha256').update(ua + '|' + lang).digest('hex').slice(0, 16);
+}
+
+export async function issueAccessToken(cfg, { fp = null } = {}) {
   return jwt.sign(
-    { t: 'access', u: 'owner' },
+    { t: 'access', u: 'owner', fp: fp || null },
     cfg.jwtSecret,
     { expiresIn: jwtAccessTTL }
   );
@@ -69,15 +78,28 @@ export async function verifyTotpPending(cfg, token) {
   }
 }
 
-export async function verifyAccessToken(cfg, token) {
+// Try the current secret first, then the previous secret if rotation
+// has happened. This allows tokens issued before a rotation to remain
+// valid until they naturally expire, instead of logging everyone out
+// the moment the secret changes.
+export async function verifyAccessToken(cfg, token, { req = null } = {}) {
   if (!token || typeof token !== 'string') return null;
-  try {
-    const decoded = jwt.verify(token, cfg.jwtSecret);
-    if (decoded.t !== 'access') return null;
-    return decoded;
-  } catch {
-    return null;
+  const secrets = [cfg.jwtSecret];
+  if (cfg.jwtSecretPrev) secrets.push(cfg.jwtSecretPrev);
+  for (const secret of secrets) {
+    try {
+      const decoded = jwt.verify(token, secret);
+      if (decoded.t !== 'access') continue;
+      if (decoded.fp && req) {
+        const fp = deviceFingerprint(req);
+        if (decoded.fp !== fp) continue;
+      }
+      return decoded;
+    } catch {
+      continue;
+    }
   }
+  return null;
 }
 
 export function getAccessTokenFromRequest(req) {
@@ -110,7 +132,7 @@ function parseCookieHeader(header) {
 export function authMiddleware(cfg) {
   return async (req, res, next) => {
     const token = getAccessTokenFromRequest(req);
-    const claims = await verifyAccessToken(cfg, token);
+    const claims = await verifyAccessToken(cfg, token, { req });
     if (!claims) {
       res.status(401).json({ error: 'unauthorized' });
       return;

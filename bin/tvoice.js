@@ -26,6 +26,7 @@ program
   .option('--no-tunnel', 'disable tunneling, serve on localhost only')
   .option('--allow-lan', 'allow binding to a non-loopback host (DANGEROUS: any device on your LAN can attempt to log in)')
   .option('--reset-totp', 'disable 2FA from the host machine (recovery if the authenticator is lost)')
+  .option('--rotate-secret', 'rotate the JWT signing secret (existing cookies remain valid until they expire)')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
@@ -104,6 +105,20 @@ function deploymentBanner(cfg, allowLan) {
 async function main() {
   refuseRoot();
   const cfg = await loadConfig();
+
+  // --rotate-secret generates a new JWT signing secret. The old secret
+  // is stashed as jwtSecretPrev so tokens signed with it remain valid
+  // until they naturally expire. The verifier checks both keys.
+  if (opts.rotateSecret) {
+    const { saveConfig } = await import('../src/server/config.js');
+    const { randomBytes } = await import('node:crypto');
+    cfg.jwtSecretPrev = cfg.jwtSecret;
+    cfg.jwtSecret = randomBytes(32).toString('hex');
+    await saveConfig(cfg);
+    console.log(chalk.green('  ✓ JWT secret rotated.'));
+    console.log(chalk.gray('  Previous secret kept as fallback until existing cookies expire.'));
+    process.exit(0);
+  }
 
   // --reset-totp is a host-side recovery path for users who lost their
   // authenticator. The user already has filesystem access to this Mac,
