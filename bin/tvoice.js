@@ -121,12 +121,46 @@ async function main() {
     if (opts.tunnel === false) cfg.tunnel = 'none';
     else if (typeof opts.tunnel === 'string') cfg.tunnel = opts.tunnel;
 
-    console.log(chalk.gray('  1. Starting server...'));
-    const { server, close: closeServer } = await startServer(cfg);
-
-    let publicUrl = `http://${cfg.host}:${cfg.port}`;
+    // Detect if tvoice is already running (e.g. via LaunchAgent).
+    // If so, use the existing server instead of starting a second one.
+    let publicUrl = null;
+    let closeServer = null;
     let tunnelInstance = null;
-    if (cfg.tunnel !== 'none') {
+    let serverAlreadyRunning = false;
+
+    try {
+      const probe = await fetch(`http://${cfg.host}:${cfg.port}/health`);
+      if (probe.ok) {
+        serverAlreadyRunning = true;
+        console.log(chalk.green('  1. Server already running on port ' + cfg.port));
+      }
+    } catch { /* not running */ }
+
+    if (!serverAlreadyRunning) {
+      console.log(chalk.gray('  1. Starting server...'));
+      const handles = await startServer(cfg);
+      closeServer = handles.close;
+    }
+
+    // Determine the public URL — check for an active tailscale serve
+    // mapping first (covers the LaunchAgent case where the tunnel is
+    // already live), otherwise start a new tunnel.
+    if (cfg.tunnel === 'tailscale') {
+      try {
+        const { execFile: ef } = await import('node:child_process');
+        const { promisify: p } = await import('node:util');
+        const efP = p(ef);
+        const tsCli = '/Applications/Tailscale.app/Contents/MacOS/Tailscale';
+        const { stdout } = await efP(tsCli, ['status', '--json']).catch(() =>
+          efP('tailscale', ['status', '--json'])
+        );
+        const parsed = JSON.parse(stdout);
+        const hostname = parsed?.Self?.DNSName?.replace(/\.$/, '');
+        if (hostname) publicUrl = `https://${hostname}:8443`;
+      } catch { /* fall through */ }
+    }
+
+    if (!publicUrl && !serverAlreadyRunning && cfg.tunnel !== 'none') {
       process.stdout.write(chalk.gray(`  2. Starting ${cfg.tunnel} tunnel... `));
       try {
         tunnelInstance = await startTunnel(cfg);
@@ -138,11 +172,13 @@ async function main() {
       }
     }
 
+    if (!publicUrl) publicUrl = `http://${cfg.host}:${cfg.port}`;
+
     const token = await mintLoginToken(cfg, { ttl: 15 * 60 });
     const loginUrl = `${publicUrl}/login?t=${encodeURIComponent(token)}`;
 
     console.log('');
-    console.log(chalk.white('  3. Open this URL on your phone to log in:'));
+    console.log(chalk.white('  2. Open this URL on your phone to log in:'));
     console.log('');
     qrcode.generate(loginUrl, { small: true }, (qr) => {
       console.log(qr.split('\n').map((l) => '  ' + l).join('\n'));
@@ -150,19 +186,22 @@ async function main() {
     console.log('');
     console.log(chalk.cyan('  ' + loginUrl));
     console.log('');
-    console.log(chalk.white('  4. After login, bookmark this permanent URL:'));
+    console.log(chalk.white('  3. After login, bookmark this permanent URL:'));
     console.log(chalk.cyan.bold(`  ${publicUrl}/`));
     console.log('');
-    console.log(chalk.gray('  That bookmark will work until you rotate the JWT secret'));
-    console.log(chalk.gray('  or clear your browser cookies. No token needed after the'));
-    console.log(chalk.gray('  first login — the cookie handles it.'));
+    console.log(chalk.gray('  The cookie is set for ~10 years. No token needed'));
+    console.log(chalk.gray('  after the first login — just open the bookmark.'));
     console.log('');
-    console.log(chalk.white('  5. To run tvoice as a background service:'));
-    console.log(chalk.gray('     See the README section on LaunchAgents (macOS) or'));
-    console.log(chalk.gray('     systemd unit files (Linux).'));
+
+    if (serverAlreadyRunning) {
+      console.log(chalk.green('  Setup complete. Server is already running as a background service.'));
+      process.exit(0);
+    }
+
+    console.log(chalk.white('  4. To keep tvoice always on, set up a background service.'));
+    console.log(chalk.gray('     See: https://github.com/Aramente/tvoice#run-as-a-background-service-macos'));
     console.log('');
-    console.log(chalk.gray('  Setup complete. Press Ctrl+C to stop the server,'));
-    console.log(chalk.gray('  or leave it running and start using tvoice now.'));
+    console.log(chalk.gray('  Server is running. Ctrl+C to stop.'));
     console.log('');
 
     const handleShutdown = async (signal) => {
