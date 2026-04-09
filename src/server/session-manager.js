@@ -127,8 +127,10 @@ class Session {
         '-y', String(this.rows),
       ];
     } else {
-      cmd = process.env.SHELL || '/bin/bash';
-      args = ['-l'];
+      cmd = process.platform === 'win32'
+        ? (process.env.COMSPEC || 'cmd.exe')
+        : (process.env.SHELL || '/bin/bash');
+      args = process.platform === 'win32' ? [] : ['-l'];
     }
 
     this.pty = ptySpawn(cmd, args, {
