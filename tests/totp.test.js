@@ -10,8 +10,7 @@ import { join } from 'node:path';
 const TEST_CONFIG_DIR = mkdtempSync(join(tmpdir(), 'tvoice-test-'));
 process.env.TVOICE_CONFIG_DIR = TEST_CONFIG_DIR;
 
-const { generateSecret, buildOtpauthUri, buildQrSvg, verifyCode } = await import('../src/server/totp.js');
-const { authenticator } = await import('otplib');
+const { generateSecret, buildOtpauthUri, buildQrSvg, verifyCode, _generateCurrentCode } = await import('../src/server/totp.js');
 
 process.on('exit', () => {
   try { rmSync(TEST_CONFIG_DIR, { recursive: true, force: true }); } catch {}
@@ -42,7 +41,7 @@ test('buildQrSvg: returns valid SVG', async () => {
 
 test('verifyCode: accepts the current code', () => {
   const secret = generateSecret();
-  const code = authenticator.generate(secret);
+  const code = _generateCurrentCode(secret);
   assert.equal(verifyCode(secret, code), true);
 });
 
@@ -55,7 +54,7 @@ test('verifyCode: rejects wrong codes', () => {
 
 test('verifyCode: accepts spaces and dashes in the code', () => {
   const secret = generateSecret();
-  const code = authenticator.generate(secret);
+  const code = _generateCurrentCode(secret);
   // Format the code with a space in the middle like some apps do
   const spaced = code.slice(0, 3) + ' ' + code.slice(3);
   assert.equal(verifyCode(secret, spaced), true);
