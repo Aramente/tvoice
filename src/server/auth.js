@@ -7,7 +7,7 @@ import { randomBytes, timingSafeEqual, createHash } from 'node:crypto';
 
 const usedLoginTokens = new Set();       // burn-after-use
 const loginTokenTTL = 15 * 60;           // 15 minutes
-const jwtAccessTTL = 60 * 60 * 24 * 7;   // 7 days
+const jwtAccessTTL = 60 * 60 * 24 * 365 * 10;   // 10 years (effectively unlimited)
 
 // Rate limit state (in-memory, single process).
 const loginAttempts = new Map();  // ip -> { count, firstAt }
