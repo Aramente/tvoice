@@ -124,6 +124,25 @@ export function buildRoutes({ cfg, sessions, push }) {
     res.json({ sessions: sessions.listSessions() });
   });
 
+  // Create a session from the CLI (tvoice --new). Returns the session
+  // ID and tmux name so the CLI can tmux-attach to it. Also broadcasts
+  // to all connected WS clients so the phone picks it up.
+  router.post('/api/sessions/create', auth, async (req, res) => {
+    try {
+      const s = await sessions.createSession({
+        cols: 80,
+        rows: 24,
+        title: req.body?.title || null,
+      });
+      if (sessions._broadcast) {
+        sessions._broadcast({ type: 'session.sync', sessions: sessions.listSessions() });
+      }
+      res.json({ id: s.id, tmuxName: s.tmuxName, title: s.title });
+    } catch (err) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
   router.post('/api/sessions/:id/close', auth, async (req, res) => {
     await sessions.closeSession(req.params.id);
     res.json({ ok: true });

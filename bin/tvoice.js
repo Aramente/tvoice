@@ -29,6 +29,7 @@ program
   .option('--rotate-secret', 'rotate the JWT signing secret (existing cookies remain valid until they expire)')
   .option('--setup', 'first-time setup — generates config, prints a permanent login URL, and exits')
   .option('--mirror', 'auto-attach to tmux sessions created from your phone')
+  .option('--new', 'create a new session (visible on phone) and attach in this terminal')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
@@ -213,6 +214,49 @@ async function main() {
     };
     process.on('SIGINT', () => handleShutdown('SIGINT'));
     process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+    return;
+  }
+
+  // --new: create a session via the running server (so the phone sees it),
+  // then attach tmux in this terminal. One command, both devices in sync.
+  if (opts.new) {
+    const { spawn: spawnProc } = await import('node:child_process');
+    const port = cfg.port || 3000;
+    const host = cfg.host || '127.0.0.1';
+
+    // We need an auth token. Mint one from the config.
+    const token = await mintLoginToken(cfg, { ttl: 60 });
+
+    // First consume the token to get a cookie, then use the cookie to create.
+    let cookie = '';
+    try {
+      const loginRes = await fetch(`http://${host}:${port}/login?t=${encodeURIComponent(token)}`, {
+        redirect: 'manual',
+      });
+      cookie = (loginRes.headers.get('set-cookie') || '').split(';')[0];
+    } catch (err) {
+      console.error(chalk.red('  Cannot reach the tvoice server.'));
+      console.error(chalk.gray(`  Is it running? Check: curl http://${host}:${port}/health`));
+      process.exit(1);
+    }
+
+    try {
+      const res = await fetch(`http://${host}:${port}/api/sessions/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', cookie },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const { id, tmuxName } = await res.json();
+      console.log(chalk.green(`  ✓ Session ${id} created (${tmuxName})`));
+      console.log(chalk.gray('  Attaching... detach with Ctrl+B then D'));
+      console.log('');
+      const child = spawnProc('tmux', ['attach', '-t', tmuxName], { stdio: 'inherit' });
+      child.on('exit', () => process.exit(0));
+    } catch (err) {
+      console.error(chalk.red('  Failed to create session: ' + err.message));
+      process.exit(1);
+    }
     return;
   }
 
