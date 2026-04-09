@@ -27,6 +27,7 @@ program
   .option('--allow-lan', 'allow binding to a non-loopback host (DANGEROUS: any device on your LAN can attempt to log in)')
   .option('--reset-totp', 'disable 2FA from the host machine (recovery if the authenticator is lost)')
   .option('--rotate-secret', 'rotate the JWT signing secret (existing cookies remain valid until they expire)')
+  .option('--setup', 'first-time setup — generates config, prints a permanent login URL, and exits')
   .option('--print-login', 'print login URL and exit')
   .parse(process.argv);
 
@@ -105,6 +106,75 @@ function deploymentBanner(cfg, allowLan) {
 async function main() {
   refuseRoot();
   const cfg = await loadConfig();
+
+  // --setup: one-time guided setup. Generates secrets, starts the server
+  // + tunnel, prints a permanent login URL, and explains how to bookmark
+  // it for daily use.
+  if (opts.setup) {
+    console.log('');
+    console.log(chalk.cyan.bold('  Tvoice first-time setup'));
+    console.log('');
+
+    // Apply tunnel preference
+    if (opts.port !== undefined) cfg.port = opts.port;
+    if (opts.host !== undefined) cfg.host = opts.host;
+    if (opts.tunnel === false) cfg.tunnel = 'none';
+    else if (typeof opts.tunnel === 'string') cfg.tunnel = opts.tunnel;
+
+    console.log(chalk.gray('  1. Starting server...'));
+    const { server, close: closeServer } = await startServer(cfg);
+
+    let publicUrl = `http://${cfg.host}:${cfg.port}`;
+    let tunnelInstance = null;
+    if (cfg.tunnel !== 'none') {
+      process.stdout.write(chalk.gray(`  2. Starting ${cfg.tunnel} tunnel... `));
+      try {
+        tunnelInstance = await startTunnel(cfg);
+        publicUrl = tunnelInstance.url;
+        console.log(chalk.green('ok'));
+      } catch (err) {
+        console.log(chalk.yellow('skipped'));
+        console.log(chalk.gray(`     ${err.message}`));
+      }
+    }
+
+    const token = await mintLoginToken(cfg, { ttl: 15 * 60 });
+    const loginUrl = `${publicUrl}/login?t=${encodeURIComponent(token)}`;
+
+    console.log('');
+    console.log(chalk.white('  3. Open this URL on your phone to log in:'));
+    console.log('');
+    qrcode.generate(loginUrl, { small: true }, (qr) => {
+      console.log(qr.split('\n').map((l) => '  ' + l).join('\n'));
+    });
+    console.log('');
+    console.log(chalk.cyan('  ' + loginUrl));
+    console.log('');
+    console.log(chalk.white('  4. After login, bookmark this permanent URL:'));
+    console.log(chalk.cyan.bold(`  ${publicUrl}/`));
+    console.log('');
+    console.log(chalk.gray('  That bookmark will work until you rotate the JWT secret'));
+    console.log(chalk.gray('  or clear your browser cookies. No token needed after the'));
+    console.log(chalk.gray('  first login — the cookie handles it.'));
+    console.log('');
+    console.log(chalk.white('  5. To run tvoice as a background service:'));
+    console.log(chalk.gray('     See the README section on LaunchAgents (macOS) or'));
+    console.log(chalk.gray('     systemd unit files (Linux).'));
+    console.log('');
+    console.log(chalk.gray('  Setup complete. Press Ctrl+C to stop the server,'));
+    console.log(chalk.gray('  or leave it running and start using tvoice now.'));
+    console.log('');
+
+    const handleShutdown = async (signal) => {
+      console.log('');
+      console.log(chalk.gray(`  ${signal} — shutting down.`));
+      await shutdown(closeServer, tunnelInstance);
+      process.exit(0);
+    };
+    process.on('SIGINT', () => handleShutdown('SIGINT'));
+    process.on('SIGTERM', () => handleShutdown('SIGTERM'));
+    return;
+  }
 
   // --rotate-secret generates a new JWT signing secret. The old secret
   // is stashed as jwtSecretPrev so tokens signed with it remain valid

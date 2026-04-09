@@ -89,6 +89,81 @@ All of these are one `brew install` away on macOS:
 brew install node tmux cloudflared
 ```
 
+## First-time setup (recommended)
+
+```bash
+npx tvoice --setup
+```
+
+This walks you through:
+1. Generates JWT + VAPID secrets (stored in `~/.tvoice/config.json`, mode 600)
+2. Starts the server + tunnel
+3. Prints a QR code — scan it on your phone to log in
+4. Tells you the **permanent URL** to bookmark
+
+After the first login, the cookie is set and you never need a token again. Just open your bookmark. The cookie is effectively permanent (10 years).
+
+### Run as a background service (macOS)
+
+So tvoice is always on — open the PWA on your phone anytime and your Mac terminal is there:
+
+```bash
+# Create a LaunchAgent
+cat > ~/Library/LaunchAgents/com.tvoice.server.plist << 'EOF'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+  <key>Label</key><string>com.tvoice.server</string>
+  <key>ProgramArguments</key>
+  <array>
+    <string>/usr/local/bin/node</string>
+    <string>/path/to/tvoice/bin/tvoice.js</string>
+    <string>--tunnel</string>
+    <string>tailscale</string>
+  </array>
+  <key>RunAtLoad</key><true/>
+  <key>KeepAlive</key><true/>
+  <key>StandardOutPath</key><string>/tmp/tvoice.out.log</string>
+  <key>StandardErrorPath</key><string>/tmp/tvoice.err.log</string>
+  <key>WorkingDirectory</key><string>/Users/YOU</string>
+  <key>EnvironmentVariables</key>
+  <dict>
+    <key>PATH</key><string>/usr/local/bin:/usr/bin:/bin</string>
+    <key>HOME</key><string>/Users/YOU</string>
+    <key>LANG</key><string>en_US.UTF-8</string>
+  </dict>
+</dict>
+</plist>
+EOF
+
+# Edit the paths above, then load it:
+launchctl load ~/Library/LaunchAgents/com.tvoice.server.plist
+```
+
+### Run as a background service (Linux systemd)
+
+```bash
+cat > ~/.config/systemd/user/tvoice.service << 'EOF'
+[Unit]
+Description=Tvoice terminal server
+After=network-online.target
+
+[Service]
+ExecStart=/usr/bin/node /path/to/tvoice/bin/tvoice.js --tunnel tailscale
+Restart=always
+RestartSec=5
+Environment=HOME=%h
+Environment=PATH=/usr/local/bin:/usr/bin:/bin
+
+[Install]
+WantedBy=default.target
+EOF
+
+systemctl --user daemon-reload
+systemctl --user enable --now tvoice
+```
+
 ## CLI flags
 
 ```
